@@ -41,42 +41,43 @@ def generate_expressions(x, y):
         for u in generate_unary_exp(b):
             yield u
 
-# def constraint_learner(posData):
-#     # num_constraints=len(unaryExpressions)*len(binaryExpressions) #fix this
-#     lb= {}
-#     ub = {}
-#     x, y = symbols('x y')
-#     for u in generate_unary_exp(x):
-#         for example in posData:
-#             for v in example:
-#                 val = u.subs({x: v})
-#                 u=str(u)
-#                 if u not in lb:
-#                     lb[u]=val
-#                     ub[u]=val
-#                 else:
-#                     lb[u] = val if val < lb[u] else lb[u]
-#                     ub[u] = val if val > ub[u] else ub[u]
+def constraint_learner(posData):
+    lb= {}
+    ub = {}
+    x, y = symbols('x y')
+    for u in generate_unary_exp(x):
+        if str(u) not in lb:
+            lb[str(u)]=[]
+            ub[str(u)]=[]
+        for example in posData:
+            for v in example:
+                val = u.subs({x: v})
+                lb[str(u)].append(val)
+                ub[str(u)].append(val)
 
-#
-#     for i,b in enumerate(binaryExpressions):
-#         k=","+str(i)
-#         for example in posData:
-#             for (x,y) in pairs(example):
-#                 val=b.subs({x:x, y: y})
-#                 lb[k] = val if val < lb[k] else lb[k]
-#                 ub[k] = val if val > ub[k] else ub[k]
-#
-#     for i, u in enumerate(unaryExpressions):
-#         for j, b in enumerate(binaryExpressions):
-#             k = str(i)+","+str(j)
-#             for example in posData:
-#                 for (x, y) in pairs(example):
-#                     val = u(b.subs({x:x, y: y}))
-#                     lb[k] = val if val < lb[k] else lb[k]
-#                     ub[k] = val if val > ub[k] else ub[k]
-#     return lb,ub
-#
+    for b in generate_binary_expr(x,y):
+        if str(b) not in lb:
+            lb[str(b)] = []
+            ub[str(b)] = []
+        for example in posData:
+            for (x,y) in pairs(example):
+                val=b.subs({x:x, y: y})
+                lb[str(u)].append(val)
+                ub[str(u)].append(val)
+
+    for u in generate_unary_exp(x):
+        for b in generate_binary_expr(x,y):
+            k = str(u)+"("+str(b)+")"
+            if k not in lb:
+                lb[k] = []
+                ub[k] = []
+            for example in posData:
+                for (x, y) in pairs(example):
+                    val = u(b.subs({x:x, y: y}))
+                    lb[k].append(val)
+                    ub[k].append(val)
+    return lb,ub
+
 # def filter_negatives(negData, unaryExpressions, binaryExpressions, lb, ub):
 #     for i,u in enumerate(unaryExpressions):
 #         k=str(i)+","
