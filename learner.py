@@ -1,6 +1,9 @@
 
 import itertools as it
 from sympy import symbols
+import json
+# from cpmpy import *
+# from cpmpy.solvers import CPM_ortools
 
 def pairs(example):
     for [x, y] in it.product(example, repeat=2):
@@ -58,19 +61,20 @@ def constraint_learner(instance):
         if str(b) not in lb:
             lb[str(b)] = []
             ub[str(b)] = []
-        for (x,y) in pairs(instance):
-            val=b.subs({x:x, y: y})
-            lb[str(u)].append(val)
-            ub[str(u)].append(val)
+        for (v1,v2) in pairs(instance):
+            val=b.subs({x:v1, y: v2})
+            lb[str(b)].append(val)
+            ub[str(b)].append(val)
 
     for u in generate_unary_exp(x):
         for b in generate_binary_expr(x,y):
-            k = str(u)+"("+str(b)+")"
+            k=str(u)
+            k=k.replace('x', '('+str(b)+')')
             if k not in lb:
                 lb[k] = []
                 ub[k] = []
-            for (x, y) in pairs(instance):
-                val = u(b.subs({x:x, y: y}))
+            for (v1, v2) in pairs(instance):
+                val = u.subs({x: b.subs({x: v1, y: v2})})
                 lb[k].append(val)
                 ub[k].append(val)
     return lb,ub
@@ -155,6 +159,13 @@ def constraint_learner(instance):
 
 if __name__ == '__main__':
     # constraint_learner()
-    x, y = symbols('x y')
-    for b in generate_expressions(x,y):
-        print(b,":", b.subs({x:5, y: 10}))
+    # x, y = symbols('x y')
+    # for b in generate_expressions(x,y):
+    #     print(b,":", b.subs({x:5, y: 10}))
+
+    data = json.load(open('instances/type01/instance0.json'))
+    size = len(data['formatTemplate']['list'])
+    inputData = [d['list'] for d in data['tests']]
+    print(inputData[0])
+    lb, ub = constraint_learner(inputData[0])
+    print(lb)
