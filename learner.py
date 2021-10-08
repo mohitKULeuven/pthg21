@@ -175,14 +175,13 @@ def create_model(data, bounds):
     # unsat_cons = musx(m.constraints)
     # model2 = Model(unsat_cons)
     # print(model2)
-    return m, len(cpvars)
+    return m, cpvars
     # m.solve()
     # print(m.status())
     # print(cpvars.value())
 
 
-def check_solutions(m, numVars, sols, verbose=False):
-    v = intvar(1, numVars, shape=numVars)
+def check_solutions(m, mvars, sols, verbose=False):
     if len(sols) == 0:
         print("No solutions to check")
         return 1.0
@@ -190,8 +189,8 @@ def check_solutions(m, numVars, sols, verbose=False):
     sats = []
     for sol in sols:
         m2 = Model([c for c in m.constraints])  # euh, CPMpy needs a model.copy()...
-        m2 += (v == sol)
-        sat = m2.solve()
+        m2 += (mvars == sol)
+        sat = m2.solve("minizinc")
         sats.append(sat)
 
         if verbose:
@@ -221,8 +220,8 @@ if __name__ == '__main__':
         numConstr += len(v)
     print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
 
-    m, numVars=create_model(data, bounds)
-    check_solutions(m, numVars, negData[:10])
+    m, mvars=create_model(data, bounds)
+    check_solutions(m, mvars, negData, verbose=True)
     # print(len(bounds))
     # lb,ub = filter_negatives(negData, lb, ub)
     # print(len(lb), len(ub))
