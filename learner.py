@@ -4,8 +4,15 @@ from sympy import symbols, lambdify, sympify
 import json
 import numpy as np
 from cpmpy import *
+import minizinc
 from musx import musx
 from cpmpy.solvers import CPM_ortools
+
+from cpmpy.expressions.variables import _NumVarImpl
+def pow(self, y=2):
+    assert (y==2)
+    return self*self
+_NumVarImpl.__pow__ = pow
 
 def pairs(example):
     for [x, y] in it.product(example, repeat=2):
@@ -20,13 +27,13 @@ def unary_operators():
     def modulo(x):
         return x % 2
 
-    # def power(x):
-    #     return x*x
+    def power(x):
+        return x*x
 
     def identity(x):
         return x
 
-    for f in [identity, abs, modulo]:
+    for f in [identity, abs]:
         yield f
 
 def generate_unary_exp(x):
@@ -165,12 +172,35 @@ def create_model(data, bounds):
                 cpm_e = f(cpvars[index[0]], cpvars[index[1]])
                 m += [cpm_e >= lb, cpm_e <= ub]
 
-    unsat_cons = musx(m.constraints)
-    model2 = Model(unsat_cons)
-    print(model2)
-    # model2.solve()
-    # print(model2.status())
-    # cpvars.value()
+    # unsat_cons = musx(m.constraints)
+    # model2 = Model(unsat_cons)
+    # print(model2)
+    return m, len(cpvars)
+    # m.solve()
+    # print(m.status())
+    # print(cpvars.value())
+
+
+def check_solutions(m, numVars, sols, verbose=False):
+    v = intvar(1, numVars, shape=numVars)
+    if len(sols) == 0:
+        print("No solutions to check")
+        return 1.0
+
+    sats = []
+    for sol in sols:
+        m2 = Model([c for c in m.constraints])  # euh, CPMpy needs a model.copy()...
+        m2 += (v == sol)
+        sat = m2.solve()
+        sats.append(sat)
+
+        if verbose:
+            if sat:
+                print(f"Sol {sol} indeed satisfies")
+            else:
+                print(f"!!! Sol {sol} does not satisfy after all")
+    print(f"{sum(sats)} satisfied out of {len(sats)}")
+    return sum(sats)*100.0 / len(sats)
 
 
 if __name__ == '__main__':
@@ -185,8 +215,13 @@ if __name__ == '__main__':
     print("number of solutions: ", len(posData))
     print("number of non-solutions: ", len(negData))
     bounds = constraint_learner(posData, posData.shape[1])
-    print(len(bounds))
-    create_model(data, bounds)
+    numConstr=0
+    for k, v in bounds.items():
+        numConstr += len(v)
+    print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
+
+    m, numVars=create_model(data, bounds)
+    check_solutions(m, numVars, negData[:10])
     # print(len(bounds))
     # lb,ub = filter_negatives(negData, lb, ub)
     # print(len(lb), len(ub))
