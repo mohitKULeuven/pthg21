@@ -1,4 +1,4 @@
-
+import sys
 import itertools as it
 from sympy import symbols, lambdify, sympify
 import json
@@ -208,8 +208,9 @@ if __name__ == '__main__':
     # x, y = symbols('x y')
     # for b in generate_binary_expr(x,y):
     #     print(b,":", b.subs({x:5, y: 10}))
-
-    data = json.load(open('instances/type01/instance0.json'))
+    args = sys.argv[1:]
+    print(args)
+    data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
     posData = np.array([d['list'] for d in data['solutions']])
     negData = np.array([d['list'] for d in data['nonSolutions']])
     print("number of solutions: ", len(posData))
