@@ -181,16 +181,16 @@ def create_model(data, bounds):
     # print(cpvars.value())
 
 
-def check_solutions(m, mvars, sols, verbose=False):
+def check_solutions(m, mvars, sols, exp, objectives, verbose=False):
     if len(sols) == 0:
         print("No solutions to check")
         return 1.0
 
     sats = []
-    for sol in sols:
-        m2 = Model([c for c in m.constraints])  # euh, CPMpy needs a model.copy()...
+    for i,sol in enumerate(sols):
+        m2 = Model([c for c in m.constraints])
         m2 += (mvars == sol)
-        sat = m2.solve("minizinc")
+        sat = m2.solve() and exp(sol)==objectives[i]
         sats.append(sat)
 
         if verbose:
@@ -201,6 +201,24 @@ def check_solutions(m, mvars, sols, verbose=False):
     print(f"{sum(sats)} satisfied out of {len(sats)}")
     return sum(sats)*100.0 / len(sats)
 
+def check_obective(exp, sols, objectives, verbose=False):
+    if len(sols) == 0:
+        print("No solutions to check")
+        return 1.0
+    sats = []
+    for i,sol in enumerate(sols):
+        sat = exp(sol)==objectives[i]
+        sats.append(sat)
+
+        if verbose:
+            if sat:
+                print(f"Sol {sol} indeed satisfies the objective {exp(sol)}")
+            else:
+                print(f"!!! Sol {sol} does not satisfy the objective {exp(sol)}")
+    print(f"{sum(sats)} objectives satisfied out of {len(sats)}")
+    return sum(sats)*100.0 / len(sats)
+
+
 
 if __name__ == '__main__':
     # constraint_learner()
@@ -208,10 +226,11 @@ if __name__ == '__main__':
     # for b in generate_binary_expr(x,y):
     #     print(b,":", b.subs({x:5, y: 10}))
     args = sys.argv[1:]
-    print(args)
     data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
     posData = np.array([d['list'] for d in data['solutions']])
+    posDataObj = np.array([d['objective'] for d in data['solutions']])
     negData = np.array([d['list'] for d in data['nonSolutions']])
+    negDataObj = np.array([d['objective'] for d in data['nonSolutions']])
     print("number of solutions: ", len(posData))
     print("number of non-solutions: ", len(negData))
     bounds = constraint_learner(posData, posData.shape[1])
@@ -221,7 +240,9 @@ if __name__ == '__main__':
     print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
 
     m, mvars=create_model(data, bounds)
-    check_solutions(m, mvars, negData, verbose=True)
+    check_solutions(m, mvars, posData[:100], max, posDataObj[:100])
+    check_solutions(m, mvars, negData[:100], max, negDataObj[:100])
+    # check_obective(max, negData, negDataObj)
     # print(len(bounds))
     # lb,ub = filter_negatives(negData, lb, ub)
     # print(len(lb), len(ub))
