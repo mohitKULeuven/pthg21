@@ -256,6 +256,29 @@ if __name__ == "__main__":
     print(f"number of constraints in the model: {len(m.constraints)}")
     check_solutions(m, mvars, posData[:10], max, posDataObj[:10])
     check_solutions(m, mvars, negData[:10], max, negDataObj[:10])
+
+    # attempt at redundancy check
+    relcons = [c for c in m.constraints] # take copy
+    i = 0
+    while i < len(relcons): # relcons will shrink
+        print("Checking redundancy of", relcons[i])
+        m2 = Model(relcons[:i] + relcons[i+1:])
+        m2 += ~all(relcons[i])
+        print(m2)
+        if m2.solve():
+            print(m2.status())
+            print("\tnot redundant")
+            i += 1
+        else:
+            print(m2.status())
+            print("\tredundant")
+            del relcons[i]
+            # keep i, will point to next
+    m = Model(relcons)
+    print(m)
+    check_solutions(m, mvars, posData[:10], max, posDataObj[:10])
+    check_solutions(m, mvars, negData[:10], max, negDataObj[:10])
+
     # check_obective(max, negData, negDataObj)
     # print(len(bounds))
     # lb,ub = filter_negatives(negData, lb, ub)
