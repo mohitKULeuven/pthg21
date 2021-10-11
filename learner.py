@@ -259,12 +259,13 @@ if __name__ == "__main__":
 
     # attempt at redundancy check
     relcons = [c for c in m.constraints] # take copy
+    relcons = relcons[::-1] # reverse, so more complex are eliminated first
     i = 0
     while i < len(relcons): # relcons will shrink
         print("Checking redundancy of", relcons[i])
         m2 = Model(relcons[:i] + relcons[i+1:])
         m2 += ~all(relcons[i])
-        print(m2)
+        #print(m2)
         if m2.solve():
             print(m2.status())
             print("\tnot redundant")
