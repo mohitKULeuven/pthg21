@@ -1,9 +1,11 @@
 import sys
 import itertools as it
-from sympy import symbols, lambdify, sympify
+from sympy import symbols, lambdify, sympify, Symbol
 import json
 import numpy as np
 from cpmpy import *
+import glob
+import csv
 import minizinc
 from musx import musx
 from cpmpy.solvers import CPM_ortools
@@ -197,7 +199,7 @@ def create_model(data, bounds):
     # print(cpvars.value())
 
 
-def check_solutions(m, mvars, sols, exp, objectives, verbose=False):
+def check_solutions(m, mvars, sols, exp, objectives=None, verbose=False):
     if len(sols) == 0:
         print("No solutions to check")
         return 1.0
@@ -206,7 +208,9 @@ def check_solutions(m, mvars, sols, exp, objectives, verbose=False):
     for i, sol in enumerate(sols):
         m2 = Model([c for c in m.constraints])
         m2 += mvars == sol
-        sat = m2.solve() and exp(sol) == objectives[i]
+        sat = m2.solve()
+        if objectives is not None and sat:
+            sat = exp(sol) == objectives[i]
         sats.append(sat)
 
         if verbose:
@@ -260,6 +264,31 @@ def generate_json_sequence(data):
     return lst
 
 
+def generate_unary_sequences(n):
+    def even(n):
+        lst = []
+        for i in range(0, n, 2):
+            lst.append((i,))
+        return lst
+
+    def odd(n):
+        lst = []
+        for i in range(1, n, 2):
+            lst.append((i,))
+        return lst
+
+    def series(n):
+        lst = []
+        for i in range(0, n):
+            lst.append((i,))
+        return lst
+
+    lst = {}
+    lst["evenUn"]=even(n)
+    lst["oddUn"]=odd(n)
+    lst["seriesUn"]=series(n)
+    return lst
+
 def generate_binary_sequences(n):
     def even(n):
         lst = []
@@ -282,65 +311,110 @@ def generate_binary_sequences(n):
     def all_pairs(n):
         return list(it.combinations(range(n), r=2))
 
-    lst = []
-    lst.append(even(n))
-    lst.append(odd(n))
-    lst.append(series(n))
-    lst.append(all_pairs(n))
+    lst = {}
+    lst["evenBin"]=even(n)
+    lst["oddBin"]=odd(n)
+    lst["seriesBin"]=series(n)
+    lst["allBin"]=all_pairs(n)
     return lst
 
+def generalise_bounds(bounds, size):
+    generalBounds={}
+    unSeq=generate_unary_sequences(size)
+    binSeq=generate_binary_sequences(size)
+    x, y = symbols("x y")
+    for b in generate_binary_expr(x, y):
+        exp = str(b)
+        generalBounds[exp]={}
+        for k, seq in binSeq.items():
+            tmp=np.array([bounds[exp][tple] for tple in seq])
+            generalBounds[exp][k] = (min(tmp[:,0]), max(tmp[:,1]))
 
-def generate_unary_sequences(n):
-    def even(n):
-        lst = []
-        for i in range(0, n, 2):
-            lst.append((i,))
-        return lst
+    for u in generate_unary_exp(x):
+        exp = str(u)
+        generalBounds[exp]={}
+        for k, seq in unSeq.items():
+            tmp=np.array([bounds[exp][tple] for tple in seq])
+            generalBounds[exp][k] = (min(tmp[:,0]), max(tmp[:,1]))
+    return generalBounds
 
-    def odd(n):
-        lst = []
-        for i in range(1, n, 2):
-            lst.append((i,))
-        return lst
 
-    def series(n):
-        lst = []
-        for i in range(0, n):
-            lst.append((i,))
-        return lst
-
-    lst = []
-    lst.append(even(n))
-    lst.append(odd(n))
-    lst.append(series(n))
-    return lst
-
+def create_gen_model(data, genBounds, size):
+    x, y = symbols("x y")
+    cpvars = []
+    for vdict in data["formatTemplate"]["list"]:
+        cpvars.append(intvar(vdict["low"], vdict["high"]))
+    cpvars = cpm_array(cpvars)
+    unSeq = generate_unary_sequences(size)
+    binSeq = generate_binary_sequences(size)
+    x, y = symbols("x y")
+    m = Model()
+    for expr, inst in genBounds.items():
+        e = sympify(expr)
+        numSym = len(e.atoms(Symbol))
+        if numSym==1:
+            for seq, (lb, ub) in inst.items():
+                for (index) in unSeq[seq]:
+                    f = lambdify(x, e)
+                    cpm_e = f(cpvars[index[0]])
+                    (v, _) = get_or_make_var(cpm_e)
+                    if lb != v.lb:
+                        m += [cpm_e >= lb]
+                    if ub != v.ub:
+                        m += [cpm_e <= ub]
+        else:
+            for seq, (lb, ub) in inst.items():
+                for (index) in binSeq[seq]:
+                    f = lambdify([x, y], e)
+                    cpm_e = f(cpvars[index[0]], cpvars[index[1]])
+                    (v, _) = get_or_make_var(cpm_e)
+                    if lb != v.lb:
+                        m += [cpm_e >= lb]
+                    if ub != v.ub:
+                        m += [cpm_e <= ub]
+    return m, cpvars
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
-    posData = np.array([d["list"] for d in data["solutions"]])
-    posDataObj = np.array([d["objective"] for d in data["solutions"]])
-    negData = np.array([d["list"] for d in data["nonSolutions"]])
-    negDataObj = np.array([d["objective"] for d in data["nonSolutions"]])
-    print("number of solutions: ", len(posData))
-    print("number of non-solutions: ", len(negData))
-    bounds = constraint_learner(posData, posData.shape[1])
-    numConstr = 0
-    for k, v in bounds.items():
-        numConstr += len(v)
-    print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
+    # t=int(args[0])
+    for t in [1,2,4,7,8,13,14,15,16]:
+        csvfile = open(f"type{t:02d}.csv", "w")
+        filewriter = csv.writer(csvfile, delimiter=",")
+        filewriter.writerow(["file", "constraints", "filtered_constraints", "num_pos", "percentage_pos",
+                             "num_neg", "percentage_neg"])
+        path = f"instances/type{t:02d}/inst*.json"
+        files = glob.glob(path)
+        for file in files:
+            print(file)
+            data = json.load(open(file))
+            # data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
+            if data["solutions"]:
+                posData = np.array([np.array(d["list"]).flatten() for d in data["solutions"]])
+                negData = np.array([np.array(d["list"]).flatten() for d in data["nonSolutions"]])
 
-    m, mvars = create_model(data, bounds)
-    print(f"number of constraints in the model: {len(m.constraints)}")
-    check_solutions(m, mvars, posData[:100], max, posDataObj[:100])
-    check_solutions(m, mvars, negData[:100], max, negDataObj[:100])
-    m = filter_redundant(m)
-    print(
-        f"number of constraints in the model after redundancy check: {len(m.constraints)}"
-    )
-    check_solutions(m, mvars, posData[:100], max, posDataObj[:100])
-    check_solutions(m, mvars, negData[:100], max, negDataObj[:100])
+                bounds = constraint_learner(posData, posData.shape[1])
+                # genBounds = generalise_bounds(bounds, posData.shape[1])
+                # numConstr = 0
+                # for k, v in bounds.items():
+                #     numConstr += len(v)
+                # print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
+
+                m, mvars = create_model(data, bounds)
+                num_cons=len(m.constraints)
+                # m, mvars = create_gen_model(data, genBounds, posData.shape[1])
+                # print(f"number of constraints in the model: {len(m.constraints)}")
+                posDataObj, negDataObj = None, None
+                if 'objective' in data['solutions'][0]:
+                    posDataObj = np.array([d["objective"] for d in data["solutions"]])
+                    negDataObj = np.array([d["objective"] for d in data["nonSolutions"]])
+                m = filter_redundant(m)
+                print(
+                    f"number of constraints in the model after redundancy check: {len(m.constraints)}"
+                )
+                perc_pos=check_solutions(m, mvars, posData, max, posDataObj)
+                perc_neg=100-check_solutions(m, mvars, negData, max, negDataObj)
+                filewriter.writerow([file,num_cons,len(m.constraints),len(posData),perc_pos, len(negData), perc_neg])
+    csvfile.close()
 
     # check_obective(max, negData, negDataObj)
     # print(len(bounds))
