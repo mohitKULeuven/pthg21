@@ -175,15 +175,19 @@ def create_model(data, bounds):
                 f = lambdify(x, e)
                 cpm_e = f(cpvars[index[0]])
                 (v, _) = get_or_make_var(cpm_e)
-                if (lb, ub) != (v.lb, v.ub):
-                    m += [cpm_e >= lb, cpm_e <= ub]
+                if lb != v.lb:
+                    m += [cpm_e >= lb]
+                if ub != v.ub:
+                    m += [cpm_e <= ub]
             else:
                 e = sympify(expr)
                 f = lambdify([x, y], e)
                 cpm_e = f(cpvars[index[0]], cpvars[index[1]])
                 (v, _) = get_or_make_var(cpm_e)
-                if (lb, ub) != (v.lb, v.ub):
-                    m += [cpm_e >= lb, cpm_e <= ub]
+                if lb != v.lb:
+                    m += [cpm_e >= lb]
+                if ub != v.ub:
+                    m += [cpm_e <= ub]
 
     # unsat_cons = musx(m.constraints)
     # model2 = Model(unsat_cons)
@@ -233,12 +237,94 @@ def check_obective(exp, sols, objectives, verbose=False):
     return sum(sats) * 100.0 / len(sats)
 
 
+def filter_redundant(m):
+    relcons = [c for c in m.constraints]  # take copy
+    relcons = relcons[::-1]  # reverse, so more complex are eliminated first
+    i = 0
+    while i < len(relcons):  # relcons will shrink
+        # print("Checking redundancy of", relcons[i])
+        m2 = Model(relcons[:i] + relcons[i + 1 :])
+        m2 += ~all(relcons[i])
+        # print(m2)
+        if m2.solve():
+            # print(m2.status())
+            # print("\tnot redundant")
+            i += 1
+        else:
+            # print(m2.status())
+            # print("\tredundant")
+            del relcons[i]
+            # keep i, will point to next
+    return Model(relcons)
+
+
+def generate_json_sequence(data):
+    lst = []
+    inputData = data["inputData"]
+    for d in inputData:
+        lst.append(tuple(d.values()))
+    return lst
+
+
+def generate_binary_sequences(n):
+    def even(n):
+        lst = []
+        for i in range(0, n - 2, 2):
+            lst.append((i, i + 2))
+        return lst
+
+    def odd(n):
+        lst = []
+        for i in range(1, n - 2, 2):
+            lst.append((i, i + 2))
+        return lst
+
+    def series(n):
+        lst = []
+        for i in range(0, n - 1):
+            lst.append((i, i + 1))
+        return lst
+
+    lst = []
+    lst.append(even(n))
+    lst.append(odd(n))
+    lst.append(series(n))
+    return lst
+
+
+def generate_unary_sequences(n):
+    def even(n):
+        lst = []
+        for i in range(0, n, 2):
+            lst.append((i,))
+        return lst
+
+    def odd(n):
+        lst = []
+        for i in range(1, n, 2):
+            lst.append((i,))
+        return lst
+
+    def series(n):
+        lst = []
+        for i in range(0, n):
+            lst.append((i,))
+        return lst
+
+    lst = []
+    lst.append(even(n))
+    lst.append(odd(n))
+    lst.append(series(n))
+    return lst
+
+
 if __name__ == "__main__":
     # constraint_learner()
     # x, y = symbols('x y')
     # for b in generate_binary_expr(x,y):
     #     print(b,":", b.subs({x:5, y: 10}))
     args = sys.argv[1:]
+    # print(generate_unary_sequences(5))
     data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
     posData = np.array([d["list"] for d in data["solutions"]])
     posDataObj = np.array([d["objective"] for d in data["solutions"]])
@@ -254,31 +340,15 @@ if __name__ == "__main__":
 
     m, mvars = create_model(data, bounds)
     print(f"number of constraints in the model: {len(m.constraints)}")
-    check_solutions(m, mvars, posData[:10], max, posDataObj[:10])
-    check_solutions(m, mvars, negData[:10], max, negDataObj[:10])
-
-    # attempt at redundancy check
-    relcons = [c for c in m.constraints] # take copy
-    relcons = relcons[::-1] # reverse, so more complex are eliminated first
-    i = 0
-    while i < len(relcons): # relcons will shrink
-        print("Checking redundancy of", relcons[i])
-        m2 = Model(relcons[:i] + relcons[i+1:])
-        m2 += ~all(relcons[i])
-        #print(m2)
-        if m2.solve():
-            print(m2.status())
-            print("\tnot redundant")
-            i += 1
-        else:
-            print(m2.status())
-            print("\tredundant")
-            del relcons[i]
-            # keep i, will point to next
-    m = Model(relcons)
+    check_solutions(m, mvars, posData[:100], max, posDataObj[:100])
+    check_solutions(m, mvars, negData[:100], max, negDataObj[:100])
+    m = filter_redundant(m)
     print(m)
-    check_solutions(m, mvars, posData[:10], max, posDataObj[:10])
-    check_solutions(m, mvars, negData[:10], max, negDataObj[:10])
+    print(
+        f"number of constraints in the model after redundancy check: {len(m.constraints)}"
+    )
+    check_solutions(m, mvars, posData[:100], max, posDataObj[:100])
+    check_solutions(m, mvars, negData[:100], max, negDataObj[:100])
 
     # check_obective(max, negData, negDataObj)
     # print(len(bounds))
