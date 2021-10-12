@@ -279,10 +279,14 @@ def generate_binary_sequences(n):
             lst.append((i, i + 1))
         return lst
 
+    def all_pairs(n):
+        return list(it.combinations(range(n), r=2))
+
     lst = []
     lst.append(even(n))
     lst.append(odd(n))
     lst.append(series(n))
+    lst.append(all_pairs(n))
     return lst
 
 
