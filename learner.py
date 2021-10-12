@@ -83,7 +83,7 @@ def constraint_learner(solutions, n_vars):
     return bounds
 
 
-def filter_negatives(negData, lb, ub):
+def filter_negatives(negData, lb, ub):  # InComplete
     x, y = symbols("x y")
     for u in generate_unary_exp(x):
         k = str(u)
@@ -168,7 +168,6 @@ def create_model(data, bounds):
 
     m = Model()
     for expr, inst in bounds.items():
-        # print(expr)
         for (index), (lb, ub) in inst.items():
             if len(index) == 1:
                 e = sympify(expr)
@@ -189,10 +188,10 @@ def create_model(data, bounds):
                 if ub != v.ub:
                     m += [cpm_e <= ub]
 
+    return m, cpvars
     # unsat_cons = musx(m.constraints)
     # model2 = Model(unsat_cons)
     # print(model2)
-    return m, cpvars
     # m.solve()
     # print(m.status())
     # print(cpvars.value())
@@ -245,14 +244,9 @@ def filter_redundant(m):
         # print("Checking redundancy of", relcons[i])
         m2 = Model(relcons[:i] + relcons[i + 1 :])
         m2 += ~all(relcons[i])
-        # print(m2)
         if m2.solve():
-            # print(m2.status())
-            # print("\tnot redundant")
             i += 1
         else:
-            # print(m2.status())
-            # print("\tredundant")
             del relcons[i]
             # keep i, will point to next
     return Model(relcons)
@@ -319,12 +313,7 @@ def generate_unary_sequences(n):
 
 
 if __name__ == "__main__":
-    # constraint_learner()
-    # x, y = symbols('x y')
-    # for b in generate_binary_expr(x,y):
-    #     print(b,":", b.subs({x:5, y: 10}))
     args = sys.argv[1:]
-    # print(generate_unary_sequences(5))
     data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
     posData = np.array([d["list"] for d in data["solutions"]])
     posDataObj = np.array([d["objective"] for d in data["solutions"]])
@@ -343,7 +332,6 @@ if __name__ == "__main__":
     check_solutions(m, mvars, posData[:100], max, posDataObj[:100])
     check_solutions(m, mvars, negData[:100], max, negDataObj[:100])
     m = filter_redundant(m)
-    print(m)
     print(
         f"number of constraints in the model after redundancy check: {len(m.constraints)}"
     )
