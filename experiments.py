@@ -18,16 +18,19 @@ def instance_level_generalised(args):
 
         bounds = learner.constraint_learner(posData, posData.shape[1])
         genBounds = learner.generalise_bounds(bounds, posData.shape[1])
+        genBounds=learner.filter_trivial(data, genBounds, posData.shape[1])
+        print(genBounds)
 
-        m, mvars = learner.create_gen_model(
+        mTrain, mvarsTrain = learner.create_gen_model(
+            data, genBounds, int(data["size"])
+        )
+
+        mTest, mvarsTest = learner.create_gen_model(
             unseen_data, genBounds, int(unseen_data["size"])
         )
-        print(f"number of constraints in the model: {len(m.constraints)}")
-        m = learner.filter_redundant(m)
-        print(m.constraints)
-        print(
-            f"number of constraints in the model after redundancy check: {len(m.constraints)}"
-        )
+
+        mTest = learner.filter_redundant(mTest)
+        mTrain = learner.filter_redundant(mTrain)
 
         posDataObj, negDataObj, unseen_posDataObj, unseen_negDataObj = (
             None,
@@ -53,16 +56,22 @@ def instance_level_generalised(args):
         unseen_negData = np.array(
             [np.array(d["list"]).flatten() for d in unseen_data["nonSolutions"]]
         )
-        # perc_pos = learner.check_solutions(m, mvars, posData, max, posDataObj)
+
+        perc_pos = learner.check_solutions(mTrain, mvarsTrain, posData, max, posDataObj)
+        perc_neg = 100 - learner.check_solutions(mTrain, mvarsTrain, negData, max, negDataObj)
+
         perc_unseen_pos = learner.check_solutions(
-            m, mvars, unseen_posData, max, unseen_posDataObj
+            mTest, mvarsTest, unseen_posData, max, unseen_posDataObj
         )
-        # perc_neg = 100 - learner.check_solutions(m, mvars, negData, max, negDataObj)
         perc_unseen_neg = 100 - learner.check_solutions(
-            m, mvars, unseen_negData, max, unseen_negDataObj
+            mTest, mvarsTest, unseen_negData, max, unseen_negDataObj
+        )
+
+        print(
+            f"{perc_pos}% positives and {perc_neg}% negatives are correctly classified in training"
         )
         print(
-            f"{perc_unseen_pos}% positives and {perc_unseen_neg}% negatives are correctly classified"
+            f"{perc_unseen_pos}% positives and {perc_unseen_neg}% negatives are correctly classified in test"
         )
 
 

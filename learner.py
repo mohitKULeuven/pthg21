@@ -72,16 +72,20 @@ def constraint_learner(solutions, n_vars):
         bounds[k] = dict()
         f = lambdify(x, u, "math")
         for i in range(n_vars):
+            bounds[k][(i,)] = {}
             vals = f(solutions[:, i])
-            bounds[k][(i,)] = (min(vals), max(vals))
+            bounds[k][(i,)]["l"] = min(vals)
+            bounds[k][(i,)]["u"] = max(vals)
 
     for b in generate_binary_expr(x, y):
         k = str(b)
         bounds[k] = dict()
         f = lambdify([x, y], b, "math")
         for (i, j) in index_pairs(n_vars):
+            bounds[k][(i, j)] = {}
             vals = f(solutions[:, i], solutions[:, j])
-            bounds[k][(i, j)] = (min(vals), max(vals))
+            bounds[k][(i, j)]["l"] = min(vals)
+            bounds[k][(i, j)]["u"] = max(vals)
     return bounds
 
 
@@ -170,7 +174,9 @@ def create_model(data, bounds):
 
     m = Model()
     for expr, inst in bounds.items():
-        for (index), (lb, ub) in inst.items():
+        for (index), values in inst.items():
+            lb = values['l']
+            ub = values['u']
             if len(index) == 1:
                 e = sympify(expr)
                 f = lambdify(x, e)
@@ -329,15 +335,19 @@ def generalise_bounds(bounds, size):
         exp = str(b)
         generalBounds[exp] = {}
         for k, seq in binSeq.items():
-            tmp = np.array([bounds[exp][tple] for tple in seq])
-            generalBounds[exp][k] = (min(tmp[:, 0]), max(tmp[:, 1]))
+            generalBounds[exp][k]={}
+            tmp = np.array([[bounds[exp][tple]['l'], bounds[exp][tple]['u']] for tple in seq])
+            generalBounds[exp][k]["l"] = min(tmp[:, 0])
+            generalBounds[exp][k]["u"] = max(tmp[:, 1])
 
     for u in generate_unary_exp(x):
         exp = str(u)
         generalBounds[exp] = {}
         for k, seq in unSeq.items():
-            tmp = np.array([bounds[exp][tple] for tple in seq])
-            generalBounds[exp][k] = (min(tmp[:, 0]), max(tmp[:, 1]))
+            generalBounds[exp][k]={}
+            tmp = np.array([[bounds[exp][tple]['l'], bounds[exp][tple]['u']] for tple in seq])
+            generalBounds[exp][k]["l"] = min(tmp[:, 0])
+            generalBounds[exp][k]["u"] = max(tmp[:, 1])
     return generalBounds
 
 
@@ -355,27 +365,70 @@ def create_gen_model(data, genBounds, size):
         e = sympify(expr)
         numSym = len(e.atoms(Symbol))
         if numSym == 1:
-            for seq, (lb, ub) in inst.items():
+            for seq, values in inst.items():
                 for index in unSeq[seq]:
                     f = lambdify(x, e)
                     cpm_e = f(cpvars[index[0]])
                     (v, _) = get_or_make_var(cpm_e)
-                    if lb != v.lb:
-                        m += [cpm_e >= lb]
-                    if ub != v.ub:
-                        m += [cpm_e <= ub]
+                    if 'l' in values and values['l'] != v.lb:
+                        m += [cpm_e >= values['l']]
+                    if 'u' in values and values['u'] != v.ub:
+                        m += [cpm_e <= values['u']]
         else:
-            for seq, (lb, ub) in inst.items():
+            for seq, values in inst.items():
                 for index in binSeq[seq]:
                     f = lambdify([x, y], e)
                     cpm_e = f(cpvars[index[0]], cpvars[index[1]])
                     (v, _) = get_or_make_var(cpm_e)
-                    if lb != v.lb:
-                        m += [cpm_e >= lb]
-                    if ub != v.ub:
-                        m += [cpm_e <= ub]
+                    if 'l' in values and values['l'] != v.lb:
+                        m += [cpm_e >= values['l']]
+                    if 'u' in values and values['u'] != v.ub:
+                        m += [cpm_e <= values['u']]
     return m, cpvars
 
+
+def filter_trivial(data, genBounds, size):
+    x, y = symbols("x y")
+    cpvars = []
+    for vdict in data["formatTemplate"]["list"]:
+        cpvars.append(intvar(vdict["low"], vdict["high"]))
+    cpvars = cpm_array(cpvars)
+    unSeq = generate_unary_sequences(size)
+    binSeq = generate_binary_sequences(size)
+    x, y = symbols("x y")
+    m = Model()
+    for expr, inst in genBounds.items():
+        e = sympify(expr)
+        numSym = len(e.atoms(Symbol))
+        if numSym == 1:
+            for seq, values in inst.items():
+                lb = values['l']
+                ub = values['u']
+                for index in unSeq[seq]:
+                    f = lambdify(x, e)
+                    cpm_e = f(cpvars[index[0]])
+                    (v, _) = get_or_make_var(cpm_e)
+                    if lb == v.lb:
+                        del genBounds[expr][seq]['l']
+                        break
+                    if ub != v.ub:
+                        del genBounds[expr][seq]['u']
+                        break
+        else:
+            for seq, values in inst.items():
+                lb = values['l']
+                ub = values['u']
+                for index in binSeq[seq]:
+                    f = lambdify([x, y], e)
+                    cpm_e = f(cpvars[index[0]], cpvars[index[1]])
+                    (v, _) = get_or_make_var(cpm_e)
+                    if lb == v.lb:
+                        del genBounds[expr][seq]['l']
+                        break
+                    if ub == v.ub:
+                        del genBounds[expr][seq]['u']
+                        break
+    return genBounds
 
 if __name__ == "__main__":
     # import os, glob
