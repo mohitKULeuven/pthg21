@@ -284,10 +284,11 @@ def generate_unary_sequences(n):
         return lst
 
     lst = {}
-    lst["evenUn"]=even(n)
-    lst["oddUn"]=odd(n)
-    lst["seriesUn"]=series(n)
+    lst["evenUn"] = even(n)
+    lst["oddUn"] = odd(n)
+    lst["seriesUn"] = series(n)
     return lst
+
 
 def generate_binary_sequences(n):
     def even(n):
@@ -312,30 +313,31 @@ def generate_binary_sequences(n):
         return list(it.combinations(range(n), r=2))
 
     lst = {}
-    lst["evenBin"]=even(n)
-    lst["oddBin"]=odd(n)
-    lst["seriesBin"]=series(n)
-    lst["allBin"]=all_pairs(n)
+    lst["evenBin"] = even(n)
+    lst["oddBin"] = odd(n)
+    lst["seriesBin"] = series(n)
+    lst["allBin"] = all_pairs(n)
     return lst
 
+
 def generalise_bounds(bounds, size):
-    generalBounds={}
-    unSeq=generate_unary_sequences(size)
-    binSeq=generate_binary_sequences(size)
+    generalBounds = {}
+    unSeq = generate_unary_sequences(size)
+    binSeq = generate_binary_sequences(size)
     x, y = symbols("x y")
     for b in generate_binary_expr(x, y):
         exp = str(b)
-        generalBounds[exp]={}
+        generalBounds[exp] = {}
         for k, seq in binSeq.items():
-            tmp=np.array([bounds[exp][tple] for tple in seq])
-            generalBounds[exp][k] = (min(tmp[:,0]), max(tmp[:,1]))
+            tmp = np.array([bounds[exp][tple] for tple in seq])
+            generalBounds[exp][k] = (min(tmp[:, 0]), max(tmp[:, 1]))
 
     for u in generate_unary_exp(x):
         exp = str(u)
-        generalBounds[exp]={}
+        generalBounds[exp] = {}
         for k, seq in unSeq.items():
-            tmp=np.array([bounds[exp][tple] for tple in seq])
-            generalBounds[exp][k] = (min(tmp[:,0]), max(tmp[:,1]))
+            tmp = np.array([bounds[exp][tple] for tple in seq])
+            generalBounds[exp][k] = (min(tmp[:, 0]), max(tmp[:, 1]))
     return generalBounds
 
 
@@ -352,9 +354,9 @@ def create_gen_model(data, genBounds, size):
     for expr, inst in genBounds.items():
         e = sympify(expr)
         numSym = len(e.atoms(Symbol))
-        if numSym==1:
+        if numSym == 1:
             for seq, (lb, ub) in inst.items():
-                for (index) in unSeq[seq]:
+                for index in unSeq[seq]:
                     f = lambdify(x, e)
                     cpm_e = f(cpvars[index[0]])
                     (v, _) = get_or_make_var(cpm_e)
@@ -364,7 +366,7 @@ def create_gen_model(data, genBounds, size):
                         m += [cpm_e <= ub]
         else:
             for seq, (lb, ub) in inst.items():
-                for (index) in binSeq[seq]:
+                for index in binSeq[seq]:
                     f = lambdify([x, y], e)
                     cpm_e = f(cpvars[index[0]], cpvars[index[1]])
                     (v, _) = get_or_make_var(cpm_e)
@@ -374,14 +376,34 @@ def create_gen_model(data, genBounds, size):
                         m += [cpm_e <= ub]
     return m, cpvars
 
+
 if __name__ == "__main__":
+    # import os, glob
+    # import pandas as pd
+    #
+    # path = ""
+    #
+    # all_files = glob.glob(os.path.join(path, "type*.csv"))
+    # df_from_each_file = (pd.read_csv(f, sep=',') for f in all_files)
+    # df_merged = pd.concat(df_from_each_file, ignore_index=True)
+    # df_merged.to_csv("merged.csv")
+    # exit()
     args = sys.argv[1:]
     # t=int(args[0])
-    for t in [1,2,4,7,8,13,14,15,16]:
+    for t in [1, 2, 4, 7, 8, 13, 14, 15, 16]:
         csvfile = open(f"type{t:02d}.csv", "w")
         filewriter = csv.writer(csvfile, delimiter=",")
-        filewriter.writerow(["file", "constraints", "filtered_constraints", "num_pos", "percentage_pos",
-                             "num_neg", "percentage_neg"])
+        filewriter.writerow(
+            [
+                "file",
+                "constraints",
+                "filtered_constraints",
+                "num_pos",
+                "percentage_pos",
+                "num_neg",
+                "percentage_neg",
+            ]
+        )
         path = f"instances/type{t:02d}/inst*.json"
         files = glob.glob(path)
         for file in files:
@@ -389,8 +411,12 @@ if __name__ == "__main__":
             data = json.load(open(file))
             # data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
             if data["solutions"]:
-                posData = np.array([np.array(d["list"]).flatten() for d in data["solutions"]])
-                negData = np.array([np.array(d["list"]).flatten() for d in data["nonSolutions"]])
+                posData = np.array(
+                    [np.array(d["list"]).flatten() for d in data["solutions"]]
+                )
+                negData = np.array(
+                    [np.array(d["list"]).flatten() for d in data["nonSolutions"]]
+                )
 
                 bounds = constraint_learner(posData, posData.shape[1])
                 # genBounds = generalise_bounds(bounds, posData.shape[1])
@@ -400,20 +426,32 @@ if __name__ == "__main__":
                 # print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
 
                 m, mvars = create_model(data, bounds)
-                num_cons=len(m.constraints)
+                num_cons = len(m.constraints)
                 # m, mvars = create_gen_model(data, genBounds, posData.shape[1])
                 # print(f"number of constraints in the model: {len(m.constraints)}")
                 posDataObj, negDataObj = None, None
-                if 'objective' in data['solutions'][0]:
+                if "objective" in data["solutions"][0]:
                     posDataObj = np.array([d["objective"] for d in data["solutions"]])
-                    negDataObj = np.array([d["objective"] for d in data["nonSolutions"]])
+                    negDataObj = np.array(
+                        [d["objective"] for d in data["nonSolutions"]]
+                    )
                 m = filter_redundant(m)
                 print(
                     f"number of constraints in the model after redundancy check: {len(m.constraints)}"
                 )
-                perc_pos=check_solutions(m, mvars, posData, max, posDataObj)
-                perc_neg=100-check_solutions(m, mvars, negData, max, negDataObj)
-                filewriter.writerow([file,num_cons,len(m.constraints),len(posData),perc_pos, len(negData), perc_neg])
+                perc_pos = check_solutions(m, mvars, posData, max, posDataObj)
+                perc_neg = 100 - check_solutions(m, mvars, negData, max, negDataObj)
+                filewriter.writerow(
+                    [
+                        file,
+                        num_cons,
+                        len(m.constraints),
+                        len(posData),
+                        perc_pos,
+                        len(negData),
+                        perc_neg,
+                    ]
+                )
     csvfile.close()
 
     # check_obective(max, negData, negDataObj)
