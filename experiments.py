@@ -5,6 +5,7 @@ from cpmpy import *
 import glob
 import csv
 import learner
+import pickle
 
 
 def instance_level_generalised(args):
@@ -25,11 +26,11 @@ def instance_level_generalised(args):
         print(genBounds)
 
         mTrain, mvarsTrain, _ = learner.create_gen_model(
-            data, genBounds, int(data["size"])
+            data, genBounds
         )
 
         mTest, mvarsTest, _ = learner.create_gen_model(
-            unseen_data, genBounds, int(unseen_data["size"])
+            unseen_data, genBounds
         )
         # print(mTrain)
 
@@ -148,6 +149,106 @@ def instance_level():
     csvfile.close()
 
 
+
+
+def type_level(t):
+    def common_items(d1, d2):
+        result = {}
+        for k in d1.keys() & d2.keys():
+            v1 = d1[k]
+            v2 = d2[k]
+            if isinstance(v1, dict) and isinstance(v2, dict):
+                result[k] = common_items(v1, v2)
+            elif v1 == v2:
+                result[k] = v1
+            else:
+                if k == 'l':
+                    result[k] = min([v1, v2])
+                else:
+                    result[k] = max([v1, v2])
+        return result
+    # for t in [1, 2, 4, 7, 8, 13, 14, 15, 16]:
+    path = f"instances/type{t:02d}/inst*.json"
+    files = glob.glob(path)
+    genBoundsList=[]
+    for file in files:
+        print(file)
+        data = json.load(open(file))
+        if data["solutions"]:
+            posData = np.array([np.array(d["list"]).flatten() for d in data["solutions"]])
+            bounds = learner.constraint_learner(posData, posData.shape[1])
+            genBounds = learner.generalise_bounds(bounds, posData.shape[1])
+            genBounds = learner.filter_trivial(data, genBounds, posData.shape[1])
+            genBounds = learner.filter_redundant(data, genBounds)
+            genBoundsList.append(genBounds)
+    commonBounds=genBoundsList[0]
+    for b in genBoundsList[1:]:
+        commonBounds = common_items(commonBounds, b)
+    return commonBounds
+
+def type_level_experiment():
+    csvfile = open(f"type_level_results.csv", "w")
+    filewriter = csv.writer(csvfile, delimiter=",")
+    filewriter.writerow(
+        [
+            "type",
+            "file",
+            "constraints",
+            "num_pos",
+            "percentage_pos",
+            "num_neg",
+            "percentage_neg",
+        ]
+    )
+    pickleVar={}
+    for t in [1, 2, 4, 7, 8, 13, 14, 15, 16]:
+        commonBounds = type_level(t)
+        pickleVar[t]=commonBounds
+        path = f"instances/type{t:02d}/inst*.json"
+        files = glob.glob(path)
+        for file in files:
+            print(file)
+            data = json.load(open(file))
+            if data["solutions"]:
+                posData = np.array(
+                    [np.array(d["list"]).flatten() for d in data["solutions"]]
+                )
+                negData = np.array(
+                    [np.array(d["list"]).flatten() for d in data["nonSolutions"]]
+                )
+                mTrain, mvarsTrain, _ = learner.create_gen_model(
+                    data, commonBounds
+                )
+
+                posDataObj, negDataObj = (
+                    None,
+                    None,
+                )
+                if "objective" in data["solutions"][0]:
+                    posDataObj = np.array([d["objective"] for d in data["solutions"]])
+                    negDataObj = np.array([d["objective"] for d in data["nonSolutions"]])
+
+                perc_pos = learner.check_solutions(mTrain, mvarsTrain, posData, max, posDataObj)
+                perc_neg = 100 - learner.check_solutions(
+                    mTrain, mvarsTrain, negData, max, negDataObj
+                )
+                filewriter.writerow(
+                    [
+                        t,
+                        file,
+                        len(mTrain.constraints),
+                        len(posData),
+                        perc_pos,
+                        len(negData),
+                        perc_neg,
+                    ]
+                )
+    pickle.dump(pickleVar, open("type_level_models.pickle", "wb"))
+    csvfile.close()
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
-    instance_level_generalised(args)
+    # instance_level_generalised(args)
+    # commonBounds=type_level(int(args[0]))
+    type_level_experiment()

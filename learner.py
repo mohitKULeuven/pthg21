@@ -256,7 +256,7 @@ def filter_redundant(data, genBounds):
                 new_data[k] = v
         return new_data
 
-    m, mvars, mapping = create_gen_model(data, genBounds, int(data["size"]))
+    m, mvars, mapping = create_gen_model(data, genBounds)
 
     relcons = [c for c in m.constraints]  # take copy
     # relcons = relcons[::-1]  # reverse, so more complex are eliminated first
@@ -303,9 +303,13 @@ def generate_unary_sequences(n):
         return lst
 
     lst = {}
-    lst["evenUn"] = even(n)
-    lst["oddUn"] = odd(n)
-    lst["seriesUn"] = series(n)
+
+    if even(n):
+        lst["evenUn"] = even(n)
+    if odd(n):
+        lst["oddUn"] = odd(n)
+    if series(n):
+        lst["seriesUn"] = series(n)
     return lst
 
 
@@ -332,10 +336,14 @@ def generate_binary_sequences(n):
         return list(it.combinations(range(n), r=2))
 
     lst = {}
-    lst["evenBin"] = even(n)
-    lst["oddBin"] = odd(n)
-    lst["seriesBin"] = series(n)
-    lst["allBin"] = all_pairs(n)
+    if even(n):
+        lst["evenBin"] = even(n)
+    if odd(n):
+        lst["oddBin"] = odd(n)
+    if series(n):
+        lst["seriesBin"] = series(n)
+    if all_pairs(n):
+        lst["allBin"] = all_pairs(n)
     return lst
 
 
@@ -368,10 +376,11 @@ def generalise_bounds(bounds, size):
     return generalBounds
 
 
-def create_gen_model(data, genBounds, size):
+def create_gen_model(data, genBounds):
     cpvars = []
     for vdict in data["formatTemplate"]["list"]:
         cpvars.append(intvar(vdict["low"], vdict["high"]))
+    size=len(cpvars)
     cpvars = cpm_array(cpvars)
     unSeq = generate_unary_sequences(size)
     binSeq = generate_binary_sequences(size)
