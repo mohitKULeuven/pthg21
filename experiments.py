@@ -18,19 +18,21 @@ def instance_level_generalised(args):
 
         bounds = learner.constraint_learner(posData, posData.shape[1])
         genBounds = learner.generalise_bounds(bounds, posData.shape[1])
-        genBounds=learner.filter_trivial(data, genBounds, posData.shape[1])
-        print(genBounds)
+        genBounds = learner.filter_trivial(data, genBounds, posData.shape[1])
+        # print(genBounds)
+        genBounds = learner.filter_redundant(data, genBounds)
+        # print("##################")
+        # print(genBounds)
+        # print(genBounds)
 
-        mTrain, mvarsTrain = learner.create_gen_model(
+        mTrain, mvarsTrain, _ = learner.create_gen_model(
             data, genBounds, int(data["size"])
         )
 
-        mTest, mvarsTest = learner.create_gen_model(
+        mTest, mvarsTest, _ = learner.create_gen_model(
             unseen_data, genBounds, int(unseen_data["size"])
         )
-
-        mTest = learner.filter_redundant(mTest)
-        mTrain = learner.filter_redundant(mTrain)
+        # print(mTrain)
 
         posDataObj, negDataObj, unseen_posDataObj, unseen_negDataObj = (
             None,
@@ -58,7 +60,9 @@ def instance_level_generalised(args):
         )
 
         perc_pos = learner.check_solutions(mTrain, mvarsTrain, posData, max, posDataObj)
-        perc_neg = 100 - learner.check_solutions(mTrain, mvarsTrain, negData, max, negDataObj)
+        perc_neg = 100 - learner.check_solutions(
+            mTrain, mvarsTrain, negData, max, negDataObj
+        )
 
         perc_unseen_pos = learner.check_solutions(
             mTest, mvarsTest, unseen_posData, max, unseen_posDataObj
