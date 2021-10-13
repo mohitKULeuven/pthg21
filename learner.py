@@ -167,9 +167,9 @@ def filter_negatives(negData, lb, ub):  # InComplete
 def create_model(data, bounds):
     x, y = symbols("x y")
     cpvars = []
-    for vdict in data["formatTemplate"]["list"]:
+    for i,vdict in enumerate(data["formatTemplate"]["list"]):
         # {'high': 10, 'low': 1, 'type': 'dvar'}
-        cpvars.append(intvar(vdict["low"], vdict["high"]))
+        cpvars.append(intvar(vdict["low"], vdict["high"], name=f"list[{i}]"))
     cpvars = cpm_array(cpvars)  # make it a CPM/Numpy array
 
     m = Model()
@@ -378,8 +378,8 @@ def generalise_bounds(bounds, size):
 
 def create_gen_model(data, genBounds):
     cpvars = []
-    for vdict in data["formatTemplate"]["list"]:
-        cpvars.append(intvar(vdict["low"], vdict["high"]))
+    for i,vdict in enumerate(data["formatTemplate"]["list"]):
+        cpvars.append(intvar(vdict["low"], vdict["high"], name=f"list[{i}]"))
     size=len(cpvars)
     cpvars = cpm_array(cpvars)
     unSeq = generate_unary_sequences(size)
@@ -538,6 +538,7 @@ if __name__ == "__main__":
                 print(
                     f"number of constraints in the model after redundancy check: {len(m.constraints)}"
                 )
+                print(m)
                 perc_pos = check_solutions(m, mvars, posData, max, posDataObj)
                 perc_neg = 100 - check_solutions(m, mvars, negData, max, negDataObj)
                 filewriter.writerow(
