@@ -22,8 +22,7 @@ def instance_level_generalised(args):
         # print(genBounds)
         genBounds = learner.filter_redundant(data, genBounds)
         # print("##################")
-        # print(genBounds)
-        # print(genBounds)
+        print(genBounds)
 
         mTrain, mvarsTrain, _ = learner.create_gen_model(
             data, genBounds, int(data["size"])
