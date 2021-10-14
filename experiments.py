@@ -1,3 +1,4 @@
+import random
 import sys
 import json
 import numpy as np
@@ -75,76 +76,129 @@ def instance_level_generalised(args):
         )
 
 
+def nested_map(f, tensor):
+    if isinstance(tensor, (list, tuple)):
+        return [nested_map(f, st) for st in tensor]
+    else:
+        return f(tensor)
+
+
 def instance_level():
-    # import os, glob
-    # import pandas as pd
-    # path = ""
-    # all_files = glob.glob(os.path.join(path, "type*.csv"))
-    # df_from_each_file = (pd.read_csv(f, sep=',') for f in all_files)
-    # df_merged = pd.concat(df_from_each_file, ignore_index=True)
-    # df_merged.to_csv("merged.csv")
-    # exit()
-    # args = sys.argv[1:]
-    for t in [1, 2, 4, 7, 8, 13, 14, 15, 16]:
-        csvfile = open(f"type{t:02d}.csv", "w")
-        filewriter = csv.writer(csvfile, delimiter=",")
-        filewriter.writerow(
-            [
-                "type",
-                "file",
-                "constraints",
-                "filtered_constraints",
-                "num_pos",
-                "percentage_pos",
-                "num_neg",
-                "percentage_neg",
-            ]
-        )
-        path = f"instances/type{t:02d}/inst*.json"
-        files = glob.glob(path)
-        for file in files:
-            print(file)
-            data = json.load(open(file))
-            # data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
-            if data["solutions"]:
-                posData = np.array(
-                    [np.array(d["list"]).flatten() for d in data["solutions"]]
-                )
-                negData = np.array(
-                    [np.array(d["list"]).flatten() for d in data["nonSolutions"]]
-                )
-                bounds = learner.constraint_learner(posData, posData.shape[1])
-                m, mvars = learner.create_model(data, bounds)
-                num_cons = len(m.constraints)
-                posDataObj, negDataObj = None, None
-                if "objective" in data["solutions"][0]:
-                    posDataObj = np.array([d["objective"] for d in data["solutions"]])
-                    negDataObj = np.array(
-                        [d["objective"] for d in data["nonSolutions"]]
+    for t in range(1, 17):  # [1, 2, 3, 4, 7, 8, 13, 14, 15, 16]:
+        with open(f"type{t:02d}.csv", "w") as csv_file:
+            file_writer = csv.writer(csv_file, delimiter=",")
+            file_writer.writerow(
+                [
+                    "type",
+                    "file",
+                    "constraints",
+                    "filtered_constraints",
+                    "num_pos",
+                    "percentage_pos",
+                    "num_neg",
+                    "percentage_neg",
+                ]
+            )
+            path = f"instances/type{t:02d}/inst*.json"
+            files = glob.glob(path)
+            for file in sorted(files):
+                print(file)
+                data = json.load(open(file))
+
+                tensors_lb = {}
+                tensors_ub = {}
+
+                for k, v in data["formatTemplate"].items():
+                    if k != "objective":
+                        tensors_lb[k] = np.array(nested_map(lambda d: d["low"], v))
+                        tensors_ub[k] = np.array(nested_map(lambda d: d["high"], v))
+
+                tensors_dim = {k: v.shape for k, v in tensors_ub.items()}
+                objective = data["formatTemplate"].get("objective", None)
+
+                if data["solutions"]:
+                    full_model, full_model_vars = Model(), []
+                    all_constraints_count = 0
+                    reduced_constraints_count = 0
+
+                    pos_data = dict()
+                    neg_data = dict()
+
+                    pos_data_obj, neg_data_obj = None, None
+                    if objective:
+                        pos_data_obj = np.array([d["objective"] for d in data["solutions"]])
+                        neg_data_obj = np.array(
+                            [d["objective"] for d in data["nonSolutions"]]
+                        )
+
+                    for k in tensors_dim:
+                        pos_data[k] = np.array(
+                            [np.array(d[k]).flatten() for d in data["solutions"]]
+                        )
+                        neg_data[k] = np.array(
+                            [np.array(d[k]).flatten() for d in data["nonSolutions"]]
+                        )
+                        var_bounds = list(zip(tensors_lb[k].flatten(), tensors_ub[k].flatten()))
+                        n_pos_examples = pos_data[k].shape[0]
+                        # training_indices = random.sample(range(n_pos_examples), int(n_pos_examples * 0.7))
+                        training_indices = range(n_pos_examples)
+                        expr_bounds = learner.constraint_learner(pos_data[k][training_indices, :], pos_data[k].shape[1])
+                        m, mvars = learner.create_model(var_bounds, expr_bounds)
+                        full_model_constraint_count = len(m.constraints)
+                        all_constraints_count += full_model_constraint_count
+
+                        m = learner.filter_redundant(m)
+                        reduced_model_constraint_count = len(m.constraints)
+                        print(
+                            f"redundancy check [{k}]: {full_model_constraint_count} => {reduced_model_constraint_count}"
+                        )
+                        reduced_constraints_count += reduced_model_constraint_count
+                        full_model += m.constraints
+                        full_model_vars += mvars
+
+                    all_pos_data, all_neg_data = None, None
+                    for k in tensors_dim:
+                        if all_pos_data is None:
+                            all_pos_data = pos_data[k]
+                            all_neg_data = neg_data[k]
+                        else:
+                            all_pos_data = np.hstack([all_pos_data, pos_data[k]])
+                            all_neg_data = np.hstack([all_neg_data, neg_data[k]])
+
+                    percentage_pos = learner.check_solutions(
+                        full_model,
+                        cpm_array(full_model_vars),
+                        all_pos_data,
+                        max,
+                        pos_data_obj
                     )
-                m = learner.filter_redundant(m)
-                print(
-                    f"number of constraints in the model after redundancy check: {len(m.constraints)}"
-                )
-                perc_pos = learner.check_solutions(m, mvars, posData, max, posDataObj)
-                perc_neg = 100 - learner.check_solutions(
-                    m, mvars, negData, max, negDataObj
-                )
-                filewriter.writerow(
-                    [
-                        t,
-                        file,
-                        num_cons,
-                        len(m.constraints),
-                        len(posData),
-                        perc_pos,
-                        len(negData),
-                        perc_neg,
-                    ]
-                )
-    csvfile.close()
+
+                    percentage_neg = 100 - learner.check_solutions(
+                        full_model,
+                        cpm_array(full_model_vars),
+                        all_neg_data,
+                        max,
+                        neg_data_obj
+                    )
+
+                    print(percentage_pos)
+                    print(percentage_neg)
+
+                    file_writer.writerow(
+                        [
+                            t,
+                            file,
+                            all_constraints_count,
+                            reduced_constraints_count,
+                            all_pos_data.shape[0],
+                            percentage_pos,
+                            all_neg_data.shape[0],
+                            percentage_neg,
+                        ]
+                    )
 
 
 if __name__ == "__main__":
     args = sys.argv[1:]
-    instance_level_generalised(args)
+    # instance_level_generalised(args)
+    instance_level()

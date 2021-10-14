@@ -6,9 +6,6 @@ import numpy as np
 from cpmpy import *
 import glob
 import csv
-import minizinc
-from musx import musx
-from cpmpy.solvers import CPM_ortools
 
 from cpmpy.transformations.flatten_model import get_or_make_var
 
@@ -164,23 +161,22 @@ def filter_negatives(negData, lb, ub):  # InComplete
     return lb, ub
 
 
-def create_model(data, bounds):
+def create_model(var_bounds, expr_bounds):
     x, y = symbols("x y")
-    cpvars = []
-    for vdict in data["formatTemplate"]["list"]:
-        # {'high': 10, 'low': 1, 'type': 'dvar'}
-        cpvars.append(intvar(vdict["low"], vdict["high"]))
-    cpvars = cpm_array(cpvars)  # make it a CPM/Numpy array
+    cp_vars = []
+    for lb, ub in var_bounds:
+        cp_vars.append(intvar(lb, ub))
+    # cp_vars = cpm_array(cp_vars)  # make it a CPM/Numpy array
 
     m = Model()
-    for expr, inst in bounds.items():
+    for expr, inst in expr_bounds.items():
         for (index), values in inst.items():
             lb = values['l']
             ub = values['u']
             if len(index) == 1:
                 e = sympify(expr)
                 f = lambdify(x, e)
-                cpm_e = f(cpvars[index[0]])
+                cpm_e = f(cp_vars[index[0]])
                 (v, _) = get_or_make_var(cpm_e)
                 if lb != v.lb:
                     m += [cpm_e >= lb]
@@ -189,20 +185,14 @@ def create_model(data, bounds):
             else:
                 e = sympify(expr)
                 f = lambdify([x, y], e)
-                cpm_e = f(cpvars[index[0]], cpvars[index[1]])
+                cpm_e = f(cp_vars[index[0]], cp_vars[index[1]])
                 (v, _) = get_or_make_var(cpm_e)
                 if lb != v.lb:
                     m += [cpm_e >= lb]
                 if ub != v.ub:
                     m += [cpm_e <= ub]
 
-    return m, cpvars
-    # unsat_cons = musx(m.constraints)
-    # model2 = Model(unsat_cons)
-    # print(model2)
-    # m.solve()
-    # print(m.status())
-    # print(cpvars.value())
+    return m, cp_vars
 
 
 def check_solutions(m, mvars, sols, exp, objectives=None, verbose=False):
