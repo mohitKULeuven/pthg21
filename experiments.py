@@ -1,12 +1,17 @@
 import random
 import sys
 import json
+from functools import reduce
+
 import numpy as np
-from cpmpy import *
+import cpmpy
 import glob
 import csv
 import learner
 import pickle
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def instance_level_generalised(args):
@@ -80,6 +85,177 @@ def instance_level_generalised(args):
         )
 
 
+def flatten(l):
+    result = []
+
+    def flatten_rec(_l):
+        if isinstance(_l, (list, tuple)):
+            for e in _l:
+                flatten_rec(e)
+        else:
+            result.append(_l)
+
+    flatten_rec(l)
+    return result
+
+
+class Instance:
+    def __init__(self, json_data):
+        tensors_lb = {}
+        tensors_ub = {}
+
+        for k, v in json_data["formatTemplate"].items():
+            if k != "objective":
+                tensors_lb[k] = np.array(nested_map(lambda d: d["low"], v))
+                tensors_ub[k] = np.array(nested_map(lambda d: d["high"], v))
+
+        self.tensors_dim = {k: v.shape for k, v in tensors_ub.items()}
+        self.var_bounds = {k: list(zip(tensors_lb[k].flatten(), tensors_ub[k].flatten())) for k in self.tensors_dim}
+
+        self.objective = json_data["formatTemplate"].get("objective", None)
+
+        def import_objectives(_l):
+            return np.array([d["objective"] for d in _l])
+
+        if self.objective:
+            self.pos_data_obj = import_objectives(json_data["solutions"])
+            self.neg_data_obj = import_objectives(json_data["nonSolutions"])
+            self.test_obj = import_objectives(json_data["tests"])
+        else:
+            self.pos_data_obj = self.neg_data_obj = self.test_obj = None
+
+        def import_data(_l):
+            return {
+                _k: np.array([np.array(d[_k]).flatten() for d in _l])
+                for _k in self.tensors_dim
+            }
+
+        self.pos_data = self.neg_data = self.test_data = None
+
+        if json_data["solutions"]:
+            self.pos_data = import_data(json_data["solutions"])
+            self.neg_data = import_data(json_data["nonSolutions"])
+        self.test_data = import_data(json_data["tests"])
+
+    def has_solutions(self):
+        return self.pos_data is not None
+
+    def flatten_data(self, data):
+        all_data = None
+        for k in self.tensors_dim:
+            if all_data is None:
+                all_data = data[k]
+            else:
+                all_data = np.hstack([all_data, data[k]])
+        return all_data
+
+    def example_count(self, positive):
+        data = self.pos_data if positive else self.neg_data
+        for k in self.tensors_dim:
+            return data[k].shape[0]
+        raise RuntimeError("Tensor dimensions are empty")
+
+    def learn_model(self, propositional, fraction_training=1.0):
+        if not self.has_solutions():
+            raise AttributeError("Cannot learn from instance without solutions")
+
+        full_model, full_model_vars = cpmpy.Model(), []
+        full_constraints_count = 0
+        reduced_constraints_count = 0
+        filtered_bounds = dict()
+
+        for k in self.tensors_dim:
+            pos_data = self.pos_data[k]
+            var_bounds = self.var_bounds[k]
+
+            n_pos_examples = pos_data.shape[0]
+            if fraction_training == 1.0:
+                training_indices = range(n_pos_examples)
+            else:
+                training_indices = random.sample(range(n_pos_examples), int(n_pos_examples * fraction_training))
+
+            expr_bounds = learner.constraint_learner(pos_data[training_indices, :], pos_data.shape[1])
+            if not propositional:
+                expr_bounds = learner.generalise_bounds(expr_bounds, pos_data.shape[1])
+                expr_bounds = learner.filter_trivial(var_bounds, expr_bounds, pos_data.shape[1], name=k)
+                m, m_vars, _ = learner.create_gen_model(var_bounds, expr_bounds, name=k)
+            else:
+                m, m_vars = learner.create_model(var_bounds, expr_bounds, name=k)
+
+            full_constraints_count += len(m.constraints)
+
+            filtered_bounds[k], constraints = learner.filter_redundant(
+                var_bounds,
+                expr_bounds,
+                name=k,
+                propositional=propositional
+            )
+
+            reduced_model_constraint_count = len(constraints)
+            logger.info(f"redundancy check [{k}]: {len(m.constraints)} => {reduced_model_constraint_count}")
+            reduced_constraints_count += reduced_model_constraint_count
+            full_model += constraints
+            full_model_vars += m_vars
+
+        return full_model, full_model_vars, filtered_bounds, dict(
+            all_constraints=full_constraints_count,
+            reduced_constraints=reduced_constraints_count,
+        )
+
+    def check(self, model, model_vars):
+        percentage_pos = learner.check_solutions(
+            model,
+            cpmpy.cpm_array(model_vars),
+            self.flatten_data(self.pos_data),
+            max,
+            self.pos_data_obj
+        )
+
+        percentage_neg = 100 - learner.check_solutions(
+            model,
+            cpmpy.cpm_array(model_vars),
+            self.flatten_data(self.neg_data),
+            max,
+            self.neg_data_obj
+        )
+
+        return percentage_pos, percentage_neg
+
+    def test(self, model, model_vars):
+        return learner.is_sat(
+            model,
+            cpmpy.cpm_array(model_vars),
+            self.flatten_data(self.test_data),
+            max,
+            self.test_obj
+        )
+
+    def get_combined_model(self, gen_bounds):
+        full_model, full_model_vars = cpmpy.Model(), []
+        for k in self.tensors_dim:
+            m, m_vars, _ = learner.create_gen_model(self.var_bounds[k], gen_bounds[k], name=k)
+            full_model += m.constraints
+            full_model_vars += m_vars
+        return full_model, full_model_vars
+
+
+def combine_gen_bounds(bounds1, bounds2):
+    result = {}
+    for k in bounds1.keys() & bounds2.keys():
+        v1 = bounds1[k]
+        v2 = bounds2[k]
+        if isinstance(v1, dict) and isinstance(v2, dict):
+            result[k] = combine_gen_bounds(v1, v2)
+        elif v1 == v2:
+            result[k] = v1
+        else:
+            if k == 'l':
+                result[k] = min([v1, v2])
+            else:
+                result[k] = max([v1, v2])
+    return result
+
+
 def nested_map(f, tensor):
     if isinstance(tensor, (list, tuple)):
         return [nested_map(f, st) for st in tensor]
@@ -88,7 +264,8 @@ def nested_map(f, tensor):
 
 
 def instance_level():
-    for t in range(1, 17):  # [1, 2, 3, 4, 7, 8, 13, 14, 15, 16]:
+    for t in range(6, 17):  # [1, 2, 3, 4, 7, 8, 13, 14, 15, 16]:
+        print(f"Type {t}")
         with open(f"type{t:02d}.csv", "w") as csv_file:
             file_writer = csv.writer(csv_file, delimiter=",")
             file_writer.writerow(
@@ -105,103 +282,56 @@ def instance_level():
             )
             path = f"instances/type{t:02d}/inst*.json"
             files = glob.glob(path)
+
+            instances = []
             for file in sorted(files):
-                print(file)
-                data = json.load(open(file))
+                with open(file) as f:
+                    instances.append(Instance(json.load(f)))
 
-                tensors_lb = {}
-                tensors_ub = {}
+            # Learn propositional models and check their quality
+            for i, instance in enumerate(instances):
+                if instance.has_solutions():
+                    m, m_vars, _, stats = instance.learn_model(propositional=True)
+                    percentage_pos, percentage_neg = instance.check(m, m_vars)
 
-                for k, v in data["formatTemplate"].items():
-                    if k != "objective":
-                        tensors_lb[k] = np.array(nested_map(lambda d: d["low"], v))
-                        tensors_ub[k] = np.array(nested_map(lambda d: d["high"], v))
+                    print(f"\tInstance {i}")
+                    print("\t\tPropositional")
+                    print(*[f"\t\t\t{c}" for c in flatten(m.constraints)], sep="\n")
+                    print(f"\t\t\tpos: {int(percentage_pos)}%  |  neg:  {int(percentage_neg)}%")
+                    print(f"\t\t\t{instance.test(m, m_vars)}")
 
-                tensors_dim = {k: v.shape for k, v in tensors_ub.items()}
-                objective = data["formatTemplate"].get("objective", None)
+            gen_bounds = []
+            for i, instance in enumerate(instances):
+                if instance.has_solutions():
+                    _, _, filtered_bounds, _ = instance.learn_model(propositional=False)
+                    gen_bounds.append(filtered_bounds)
 
-                if data["solutions"]:
-                    full_model, full_model_vars = Model(), []
-                    all_constraints_count = 0
-                    reduced_constraints_count = 0
+            merged_bounds = reduce(combine_gen_bounds, gen_bounds)
 
-                    pos_data = dict()
-                    neg_data = dict()
+            for i, instance in enumerate(instances):
+                print(f"\tInstance {i}")
+                print("\t\tLifted")
+                merged_model, mm_vars = instance.get_combined_model(merged_bounds)
+                print(*[f"\t\t{c}" for c in flatten(merged_model.constraints)], sep="\n")
 
-                    pos_data_obj, neg_data_obj = None, None
-                    if objective:
-                        pos_data_obj = np.array([d["objective"] for d in data["solutions"]])
-                        neg_data_obj = np.array(
-                            [d["objective"] for d in data["nonSolutions"]]
-                        )
+                if instance.has_solutions():
+                    percentage_pos, percentage_neg = instance.check(merged_model, mm_vars)
+                    print(f"\t\t\tpos: {int(percentage_pos)}%  |  neg:  {int(percentage_neg)}%")
+                else:
+                    print(f"\t\t\t{instance.test(merged_model, mm_vars)}")
 
-                    for k in tensors_dim:
-                        pos_data[k] = np.array(
-                            [np.array(d[k]).flatten() for d in data["solutions"]]
-                        )
-                        neg_data[k] = np.array(
-                            [np.array(d[k]).flatten() for d in data["nonSolutions"]]
-                        )
-                        var_bounds = list(zip(tensors_lb[k].flatten(), tensors_ub[k].flatten()))
-                        n_pos_examples = pos_data[k].shape[0]
-                        # training_indices = random.sample(range(n_pos_examples), int(n_pos_examples * 0.7))
-                        training_indices = range(n_pos_examples)
-                        expr_bounds = learner.constraint_learner(pos_data[k][training_indices, :], pos_data[k].shape[1])
-                        m, mvars = learner.create_model(var_bounds, expr_bounds)
-                        full_model_constraint_count = len(m.constraints)
-                        all_constraints_count += full_model_constraint_count
-
-                        m = learner.filter_redundant(m)
-                        reduced_model_constraint_count = len(m.constraints)
-                        print(
-                            f"redundancy check [{k}]: {full_model_constraint_count} => {reduced_model_constraint_count}"
-                        )
-                        reduced_constraints_count += reduced_model_constraint_count
-                        full_model += m.constraints
-                        full_model_vars += mvars
-
-                    all_pos_data, all_neg_data = None, None
-                    for k in tensors_dim:
-                        if all_pos_data is None:
-                            all_pos_data = pos_data[k]
-                            all_neg_data = neg_data[k]
-                        else:
-                            all_pos_data = np.hstack([all_pos_data, pos_data[k]])
-                            all_neg_data = np.hstack([all_neg_data, neg_data[k]])
-
-                    percentage_pos = learner.check_solutions(
-                        full_model,
-                        cpm_array(full_model_vars),
-                        all_pos_data,
-                        max,
-                        pos_data_obj
-                    )
-
-                    percentage_neg = 100 - learner.check_solutions(
-                        full_model,
-                        cpm_array(full_model_vars),
-                        all_neg_data,
-                        max,
-                        neg_data_obj
-                    )
-
-                    print(percentage_pos)
-                    print(percentage_neg)
-
-                    file_writer.writerow(
-                        [
-                            t,
-                            file,
-                            all_constraints_count,
-                            reduced_constraints_count,
-                            all_pos_data.shape[0],
-                            percentage_pos,
-                            all_neg_data.shape[0],
-                            percentage_neg,
-                        ]
-                    )
-
-
+            # file_writer.writerow(
+                #     [
+                #         t,
+                #         file,
+                #         all_constraints_count,
+                #         reduced_constraints_count,
+                #         all_pos_data.shape[0],
+                #         percentage_pos,
+                #         all_neg_data.shape[0],
+                #         percentage_neg,
+                #     ]
+                # )
 
 
 def type_level(t):
@@ -304,4 +434,5 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     # instance_level_generalised(args)
     # commonBounds=type_level(int(args[0]))
-    type_level_experiment()
+    # type_level_experiment()
+    instance_level()

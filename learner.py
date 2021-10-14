@@ -1,19 +1,13 @@
-import sys
 import itertools as it
 from sympy import symbols, lambdify, sympify, Symbol
-import json
 import numpy as np
+import logging
+
 from cpmpy import *
-import glob
-import csv
 
 from cpmpy.transformations.flatten_model import get_or_make_var
 
-# from cpmpy.expressions.variables import _NumVarImpl
-# def pow(self, y=2):
-#     assert (y==2)
-#     return self*self
-# _NumVarImpl.__pow__ = pow
+logger = logging.getLogger(__name__)
 
 
 def pairs(example):
@@ -161,12 +155,16 @@ def filter_negatives(negData, lb, ub):  # InComplete
     return lb, ub
 
 
-def create_model(var_bounds, expr_bounds, name=None):
+def create_variables(var_bounds, name):
+    return [
+        intvar(lb, ub, name=f"{name}[{i}]")
+        for i, (lb, ub) in enumerate(var_bounds)
+    ]
+
+
+def create_model(var_bounds, expr_bounds, name):
     x, y = symbols("x y")
-    cp_vars = []
-    for i, (lb, ub) in enumerate(var_bounds):
-        cp_vars.append(intvar(lb, ub, name=None if name is None else f"{name}[{i}]"))
-    # cp_vars = cpm_array(cp_vars)  # make it a CPM/Numpy array
+    cp_vars = create_variables(var_bounds, name)
 
     m = Model()
     for expr, inst in expr_bounds.items():
@@ -195,26 +193,25 @@ def create_model(var_bounds, expr_bounds, name=None):
     return m, cp_vars
 
 
-def check_solutions(m, mvars, sols, exp, objectives=None, verbose=False):
-    if len(sols) == 0:
-        print("No solutions to check")
-        return 1.0
-
+def is_sat(m, m_vars, sols, exp, objectives=None):
     sats = []
     for i, sol in enumerate(sols):
         m2 = Model([c for c in m.constraints])
-        m2 += mvars == sol
+        m2 += m_vars == sol
         sat = m2.solve()
         if objectives is not None and sat:
             sat = exp(sol) == objectives[i]
         sats.append(sat)
+    return sats
 
-        if verbose:
-            if sat:
-                print(f"Sol {sol} indeed satisfies")
-            else:
-                print(f"!!! Sol {sol} does not satisfy after all")
-    print(f"{sum(sats)} satisfied out of {len(sats)}")
+
+def check_solutions(m, mvars, sols, exp, objectives=None):
+    if len(sols) == 0:
+        print("No solutions to check")
+        return 1.0
+
+    sats = is_sat(m, mvars, sols, exp, objectives)
+    logger.info(f"{sum(sats)} satisfied out of {len(sats)}")
     return sum(sats) * 100.0 / len(sats)
 
 
@@ -236,33 +233,43 @@ def check_obective(exp, sols, objectives, verbose=False):
     return sum(sats) * 100.0 / len(sats)
 
 
-def filter_redundant(data, genBounds):
-    def stripper(data):
-        new_data = {}
-        for k, v in data.items():
-            if isinstance(v, dict):
-                v = stripper(v)
-            if not v in ("", None, {}):
-                new_data[k] = v
-        return new_data
+def strip_empty_entries(dictionary):
+    new_data = {}
+    for k, v in dictionary.items():
+        if isinstance(v, dict):
+            v = strip_empty_entries(v)
+        if v not in ("", None, {}):
+            new_data[k] = v
+    return new_data
 
-    m, mvars, mapping = create_gen_model(data, genBounds)
 
-    relcons = [c for c in m.constraints]  # take copy
-    # relcons = relcons[::-1]  # reverse, so more complex are eliminated first
+def filter_redundant(var_bounds, expr_bounds, name, propositional=False):
+    mapping = None
+    if propositional:
+        m, _ = create_model(var_bounds, expr_bounds, name=name)
+        # reverse, so more complex are eliminated first
+        constraints = reversed(m.constraints)
+    else:
+        m, _, mapping = create_gen_model(var_bounds, expr_bounds, name=name)
+        constraints = m.constraints
+
+    constraints = [c for c in constraints]  # take copy
+
     i = 0
-    while i < len(relcons):
-        m2 = Model(relcons[:i] + relcons[i + 1 :])
-        m2 += ~all(relcons[i])
+    while i < len(constraints):
+        m2 = Model(constraints[:i] + constraints[i + 1 :])
+        m2 += ~all(constraints[i])
         if m2.solve():
             i += 1
         else:
-            del relcons[i]
-            del genBounds[mapping[i][0]][mapping[i][1]][mapping[i][2]]
-            del mapping[i]
-    genBounds=stripper(genBounds)
-    return genBounds
-    # return Model(relcons), mvars
+            del constraints[i]
+
+            if mapping:
+                del expr_bounds[mapping[i][0]][mapping[i][1]][mapping[i][2]]
+                del mapping[i]
+
+    expr_bounds = strip_empty_entries(expr_bounds)
+    return expr_bounds, constraints
 
 
 def generate_json_sequence(data):
@@ -366,12 +373,9 @@ def generalise_bounds(bounds, size):
     return generalBounds
 
 
-def create_gen_model(data, genBounds):
-    cpvars = []
-    for i,vdict in enumerate(data["formatTemplate"]["list"]):
-        cpvars.append(intvar(vdict["low"], vdict["high"], name=f"list[{i}]"))
-    size=len(cpvars)
-    cpvars = cpm_array(cpvars)
+def create_gen_model(var_bounds, genBounds, name):
+    cp_vars = create_variables(var_bounds, name)
+    size = len(cp_vars)
     unSeq = generate_unary_sequences(size)
     binSeq = generate_binary_sequences(size)
     x, y = symbols("x y")
@@ -386,7 +390,7 @@ def create_gen_model(data, genBounds):
                 constraints_u = []
                 for index in unSeq[seq]:
                     f = lambdify(x, e)
-                    cpm_e = f(cpvars[index[0]])
+                    cpm_e = f(cp_vars[index[0]])
                     (v, _) = get_or_make_var(cpm_e)
                     if "l" in values:
                         # m += [cpm_e >= values['l']]
@@ -407,7 +411,7 @@ def create_gen_model(data, genBounds):
                 constraints_u = []
                 for index in binSeq[seq]:
                     f = lambdify([x, y], e)
-                    cpm_e = f(cpvars[index[0]], cpvars[index[1]])
+                    cpm_e = f(cp_vars[index[0]], cp_vars[index[1]])
                     (v, _) = get_or_make_var(cpm_e)
                     if "l" in values:
                         # m += [cpm_e >= values['l']]
@@ -421,14 +425,12 @@ def create_gen_model(data, genBounds):
                 if constraints_u:
                     m += constraints_u
                     mapping.append([expr, seq, "u"])
-    return m, cpvars, mapping
+    return m, cp_vars, mapping
 
 
-def filter_trivial(data, genBounds, size):
-    cpvars = []
-    for vdict in data["formatTemplate"]["list"]:
-        cpvars.append(intvar(vdict["low"], vdict["high"]))
-    cpvars = cpm_array(cpvars)
+def filter_trivial(var_bounds, genBounds, size, name):
+    cp_vars = create_variables(var_bounds, name)
+
     unSeq = generate_unary_sequences(size)
     binSeq = generate_binary_sequences(size)
     x, y = symbols("x y")
@@ -441,7 +443,7 @@ def filter_trivial(data, genBounds, size):
                 ub = values["u"]
                 for index in unSeq[seq]:
                     f = lambdify(x, e)
-                    cpm_e = f(cpvars[index[0]])
+                    cpm_e = f(cp_vars[index[0]])
                     (v, _) = get_or_make_var(cpm_e)
                     if lb == v.lb:
                         del genBounds[expr][seq]["l"]
@@ -455,7 +457,7 @@ def filter_trivial(data, genBounds, size):
                 ub = values["u"]
                 for index in binSeq[seq]:
                     f = lambdify([x, y], e)
-                    cpm_e = f(cpvars[index[0]], cpvars[index[1]])
+                    cpm_e = f(cp_vars[index[0]], cp_vars[index[1]])
                     (v, _) = get_or_make_var(cpm_e)
                     if lb == v.lb:
                         del genBounds[expr][seq]["l"]
@@ -464,87 +466,3 @@ def filter_trivial(data, genBounds, size):
                         del genBounds[expr][seq]["u"]
                         break
     return genBounds
-
-
-if __name__ == "__main__":
-    # import os, glob
-    # import pandas as pd
-    #
-    # path = ""
-    #
-    # all_files = glob.glob(os.path.join(path, "type*.csv"))
-    # df_from_each_file = (pd.read_csv(f, sep=',') for f in all_files)
-    # df_merged = pd.concat(df_from_each_file, ignore_index=True)
-    # df_merged.to_csv("merged.csv")
-    # exit()
-    args = sys.argv[1:]
-    # t=int(args[0])
-    for t in [1, 2, 4, 7, 8, 13, 14, 15, 16]:
-        csvfile = open(f"type{t:02d}.csv", "w")
-        filewriter = csv.writer(csvfile, delimiter=",")
-        filewriter.writerow(
-            [
-                "file",
-                "constraints",
-                "filtered_constraints",
-                "num_pos",
-                "percentage_pos",
-                "num_neg",
-                "percentage_neg",
-            ]
-        )
-        path = f"instances/type{t:02d}/inst*.json"
-        files = glob.glob(path)
-        for file in files:
-            print(file)
-            data = json.load(open(file))
-            # data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
-            if data["solutions"]:
-                posData = np.array(
-                    [np.array(d["list"]).flatten() for d in data["solutions"]]
-                )
-                negData = np.array(
-                    [np.array(d["list"]).flatten() for d in data["nonSolutions"]]
-                )
-
-                bounds = constraint_learner(posData, posData.shape[1])
-                # genBounds = generalise_bounds(bounds, posData.shape[1])
-                # numConstr = 0
-                # for k, v in bounds.items():
-                #     numConstr += len(v)
-                # print(f"learned {numConstr} constraints from {len(bounds)} different expressions")
-
-                m, mvars = create_model(data, bounds)
-                num_cons = len(m.constraints)
-                # m, mvars = create_gen_model(data, genBounds, posData.shape[1])
-                # print(f"number of constraints in the model: {len(m.constraints)}")
-                posDataObj, negDataObj = None, None
-                if "objective" in data["solutions"][0]:
-                    posDataObj = np.array([d["objective"] for d in data["solutions"]])
-                    negDataObj = np.array(
-                        [d["objective"] for d in data["nonSolutions"]]
-                    )
-                m = filter_redundant(m)
-                print(
-                    f"number of constraints in the model after redundancy check: {len(m.constraints)}"
-                )
-                print(m)
-                perc_pos = check_solutions(m, mvars, posData, max, posDataObj)
-                perc_neg = 100 - check_solutions(m, mvars, negData, max, negDataObj)
-                filewriter.writerow(
-                    [
-                        file,
-                        num_cons,
-                        len(m.constraints),
-                        len(posData),
-                        perc_pos,
-                        len(negData),
-                        perc_neg,
-                    ]
-                )
-    csvfile.close()
-
-    # check_obective(max, negData, negDataObj)
-    # print(len(bounds))
-    # lb,ub = filter_negatives(negData, lb, ub)
-    # print(len(lb), len(ub))
