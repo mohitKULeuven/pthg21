@@ -161,18 +161,18 @@ def filter_negatives(negData, lb, ub):  # InComplete
     return lb, ub
 
 
-def create_model(var_bounds, expr_bounds):
+def create_model(var_bounds, expr_bounds, name=None):
     x, y = symbols("x y")
     cp_vars = []
-    for lb, ub in var_bounds:
-        cp_vars.append(intvar(lb, ub))
+    for i, (lb, ub) in enumerate(var_bounds):
+        cp_vars.append(intvar(lb, ub, name=None if name is None else f"{name}[{i}]"))
     # cp_vars = cpm_array(cp_vars)  # make it a CPM/Numpy array
 
     m = Model()
     for expr, inst in expr_bounds.items():
         for (index), values in inst.items():
-            lb = values['l']
-            ub = values['u']
+            lb = values["l"]
+            ub = values["u"]
             if len(index) == 1:
                 e = sympify(expr)
                 f = lambdify(x, e)
@@ -236,20 +236,33 @@ def check_obective(exp, sols, objectives, verbose=False):
     return sum(sats) * 100.0 / len(sats)
 
 
-def filter_redundant(m):
+def filter_redundant(data, genBounds):
+    def stripper(data):
+        new_data = {}
+        for k, v in data.items():
+            if isinstance(v, dict):
+                v = stripper(v)
+            if not v in ("", None, {}):
+                new_data[k] = v
+        return new_data
+
+    m, mvars, mapping = create_gen_model(data, genBounds)
+
     relcons = [c for c in m.constraints]  # take copy
-    relcons = relcons[::-1]  # reverse, so more complex are eliminated first
+    # relcons = relcons[::-1]  # reverse, so more complex are eliminated first
     i = 0
-    while i < len(relcons):  # relcons will shrink
-        # print("Checking redundancy of", relcons[i])
+    while i < len(relcons):
         m2 = Model(relcons[:i] + relcons[i + 1 :])
         m2 += ~all(relcons[i])
         if m2.solve():
             i += 1
         else:
             del relcons[i]
-            # keep i, will point to next
-    return Model(relcons)
+            del genBounds[mapping[i][0]][mapping[i][1]][mapping[i][2]]
+            del mapping[i]
+    genBounds=stripper(genBounds)
+    return genBounds
+    # return Model(relcons), mvars
 
 
 def generate_json_sequence(data):
@@ -280,9 +293,13 @@ def generate_unary_sequences(n):
         return lst
 
     lst = {}
-    lst["evenUn"] = even(n)
-    lst["oddUn"] = odd(n)
-    lst["seriesUn"] = series(n)
+
+    if even(n):
+        lst["evenUn"] = even(n)
+    if odd(n):
+        lst["oddUn"] = odd(n)
+    if series(n):
+        lst["seriesUn"] = series(n)
     return lst
 
 
@@ -309,10 +326,14 @@ def generate_binary_sequences(n):
         return list(it.combinations(range(n), r=2))
 
     lst = {}
-    lst["evenBin"] = even(n)
-    lst["oddBin"] = odd(n)
-    lst["seriesBin"] = series(n)
-    lst["allBin"] = all_pairs(n)
+    if even(n):
+        lst["evenBin"] = even(n)
+    if odd(n):
+        lst["oddBin"] = odd(n)
+    if series(n):
+        lst["seriesBin"] = series(n)
+    if all_pairs(n):
+        lst["allBin"] = all_pairs(n)
     return lst
 
 
@@ -325,8 +346,10 @@ def generalise_bounds(bounds, size):
         exp = str(b)
         generalBounds[exp] = {}
         for k, seq in binSeq.items():
-            generalBounds[exp][k]={}
-            tmp = np.array([[bounds[exp][tple]['l'], bounds[exp][tple]['u']] for tple in seq])
+            generalBounds[exp][k] = {}
+            tmp = np.array(
+                [[bounds[exp][tple]["l"], bounds[exp][tple]["u"]] for tple in seq]
+            )
             generalBounds[exp][k]["l"] = min(tmp[:, 0])
             generalBounds[exp][k]["u"] = max(tmp[:, 1])
 
@@ -334,51 +357,74 @@ def generalise_bounds(bounds, size):
         exp = str(u)
         generalBounds[exp] = {}
         for k, seq in unSeq.items():
-            generalBounds[exp][k]={}
-            tmp = np.array([[bounds[exp][tple]['l'], bounds[exp][tple]['u']] for tple in seq])
+            generalBounds[exp][k] = {}
+            tmp = np.array(
+                [[bounds[exp][tple]["l"], bounds[exp][tple]["u"]] for tple in seq]
+            )
             generalBounds[exp][k]["l"] = min(tmp[:, 0])
             generalBounds[exp][k]["u"] = max(tmp[:, 1])
     return generalBounds
 
 
-def create_gen_model(data, genBounds, size):
-    x, y = symbols("x y")
+def create_gen_model(data, genBounds):
     cpvars = []
-    for vdict in data["formatTemplate"]["list"]:
-        cpvars.append(intvar(vdict["low"], vdict["high"]))
+    for i,vdict in enumerate(data["formatTemplate"]["list"]):
+        cpvars.append(intvar(vdict["low"], vdict["high"], name=f"list[{i}]"))
+    size=len(cpvars)
     cpvars = cpm_array(cpvars)
     unSeq = generate_unary_sequences(size)
     binSeq = generate_binary_sequences(size)
     x, y = symbols("x y")
     m = Model()
+    mapping = []
     for expr, inst in genBounds.items():
         e = sympify(expr)
         numSym = len(e.atoms(Symbol))
         if numSym == 1:
             for seq, values in inst.items():
+                constraints_l = []
+                constraints_u = []
                 for index in unSeq[seq]:
                     f = lambdify(x, e)
                     cpm_e = f(cpvars[index[0]])
                     (v, _) = get_or_make_var(cpm_e)
-                    if 'l' in values and values['l'] != v.lb:
-                        m += [cpm_e >= values['l']]
-                    if 'u' in values and values['u'] != v.ub:
-                        m += [cpm_e <= values['u']]
+                    if "l" in values:
+                        # m += [cpm_e >= values['l']]
+                        constraints_l.append(cpm_e >= values["l"])
+                    if "u" in values:
+                        # m += [cpm_e <= values['u']]
+                        constraints_u.append(cpm_e <= values["u"])
+                # print(tmp)
+                if constraints_l:
+                    mapping.append([expr, seq, "l"])
+                    m += constraints_l
+                if constraints_u:
+                    m += constraints_u
+                    mapping.append([expr, seq, "u"])
         else:
             for seq, values in inst.items():
+                constraints_l = []
+                constraints_u = []
                 for index in binSeq[seq]:
                     f = lambdify([x, y], e)
                     cpm_e = f(cpvars[index[0]], cpvars[index[1]])
                     (v, _) = get_or_make_var(cpm_e)
-                    if 'l' in values and values['l'] != v.lb:
-                        m += [cpm_e >= values['l']]
-                    if 'u' in values and values['u'] != v.ub:
-                        m += [cpm_e <= values['u']]
-    return m, cpvars
+                    if "l" in values:
+                        # m += [cpm_e >= values['l']]
+                        constraints_l.append(cpm_e >= values["l"])
+                    if "u" in values:
+                        # m += [cpm_e <= values['u']]
+                        constraints_u.append(cpm_e <= values["u"])
+                if constraints_l:
+                    m += constraints_l
+                    mapping.append([expr, seq, "l"])
+                if constraints_u:
+                    m += constraints_u
+                    mapping.append([expr, seq, "u"])
+    return m, cpvars, mapping
 
 
 def filter_trivial(data, genBounds, size):
-    x, y = symbols("x y")
     cpvars = []
     for vdict in data["formatTemplate"]["list"]:
         cpvars.append(intvar(vdict["low"], vdict["high"]))
@@ -386,39 +432,39 @@ def filter_trivial(data, genBounds, size):
     unSeq = generate_unary_sequences(size)
     binSeq = generate_binary_sequences(size)
     x, y = symbols("x y")
-    m = Model()
     for expr, inst in genBounds.items():
         e = sympify(expr)
         numSym = len(e.atoms(Symbol))
         if numSym == 1:
             for seq, values in inst.items():
-                lb = values['l']
-                ub = values['u']
+                lb = values["l"]
+                ub = values["u"]
                 for index in unSeq[seq]:
                     f = lambdify(x, e)
                     cpm_e = f(cpvars[index[0]])
                     (v, _) = get_or_make_var(cpm_e)
                     if lb == v.lb:
-                        del genBounds[expr][seq]['l']
+                        del genBounds[expr][seq]["l"]
                         break
-                    if ub != v.ub:
-                        del genBounds[expr][seq]['u']
+                    if ub == v.ub:
+                        del genBounds[expr][seq]["u"]
                         break
         else:
             for seq, values in inst.items():
-                lb = values['l']
-                ub = values['u']
+                lb = values["l"]
+                ub = values["u"]
                 for index in binSeq[seq]:
                     f = lambdify([x, y], e)
                     cpm_e = f(cpvars[index[0]], cpvars[index[1]])
                     (v, _) = get_or_make_var(cpm_e)
                     if lb == v.lb:
-                        del genBounds[expr][seq]['l']
+                        del genBounds[expr][seq]["l"]
                         break
                     if ub == v.ub:
-                        del genBounds[expr][seq]['u']
+                        del genBounds[expr][seq]["u"]
                         break
     return genBounds
+
 
 if __name__ == "__main__":
     # import os, glob
@@ -482,6 +528,7 @@ if __name__ == "__main__":
                 print(
                     f"number of constraints in the model after redundancy check: {len(m.constraints)}"
                 )
+                print(m)
                 perc_pos = check_solutions(m, mvars, posData, max, posDataObj)
                 perc_neg = 100 - check_solutions(m, mvars, negData, max, negDataObj)
                 filewriter.writerow(
