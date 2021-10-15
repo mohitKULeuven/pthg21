@@ -392,12 +392,8 @@ def instance_level(t):
         for i, instance in enumerate(instances):
             if instance.has_solutions():
                 m, m_vars, _, stats = instance.learn_model(propositional=True)
-                print(m.constraints)
-                print([(v, v.value()) for v in m_vars])
                 pickle_var[files[i]] = [m, m_vars]
                 percentage_pos, percentage_neg = instance.check(m, m_vars)
-                print(m.constraints)
-                print([(v, v.value()) for v in m_vars])
                 tests_classification = instance.test(m, m_vars)
                 save_results_json(instance.problem_type, instance.number, tests_classification)
 
