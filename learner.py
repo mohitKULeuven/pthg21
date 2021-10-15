@@ -243,14 +243,14 @@ def strip_empty_entries(dictionary):
     return new_data
 
 
-def filter_redundant(var_bounds, expr_bounds, name, propositional=False):
+def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=False):
     mapping = None
     if propositional:
         m, _ = create_model(var_bounds, expr_bounds, name=name)
         # reverse, so more complex are eliminated first
         constraints = reversed(m.constraints)
     else:
-        m, _, mapping = create_gen_model(var_bounds, expr_bounds, name=name)
+        m, _, mapping = create_gen_model(var_bounds, expr_bounds, name=name, inputData=inputData)
         constraints = m.constraints
 
     constraints = [c for c in constraints]  # take copy
@@ -271,13 +271,6 @@ def filter_redundant(var_bounds, expr_bounds, name, propositional=False):
     expr_bounds = strip_empty_entries(expr_bounds)
     return expr_bounds, constraints
 
-
-def generate_json_sequence(data):
-    lst = []
-    inputData = data["inputData"]
-    for d in inputData:
-        lst.append(tuple(d.values()))
-    return lst
 
 
 def generate_unary_sequences(n):
@@ -310,7 +303,7 @@ def generate_unary_sequences(n):
     return lst
 
 
-def generate_binary_sequences(n):
+def generate_binary_sequences(n, data=None):
     def even(n):
         lst = []
         for i in range(0, n - 2, 2):
@@ -332,6 +325,7 @@ def generate_binary_sequences(n):
     def all_pairs(n):
         return list(it.combinations(range(n), r=2))
 
+
     lst = {}
     if even(n):
         lst["evenBin"] = even(n)
@@ -341,13 +335,15 @@ def generate_binary_sequences(n):
         lst["seriesBin"] = series(n)
     if all_pairs(n):
         lst["allBin"] = all_pairs(n)
+    if data:
+        lst["jsonSeq"] = data
     return lst
 
 
-def generalise_bounds(bounds, size):
+def generalise_bounds(bounds, size, inputData):
     generalBounds = {}
     unSeq = generate_unary_sequences(size)
-    binSeq = generate_binary_sequences(size)
+    binSeq = generate_binary_sequences(size, inputData)
     x, y = symbols("x y")
     for b in generate_binary_expr(x, y):
         exp = str(b)
@@ -373,11 +369,11 @@ def generalise_bounds(bounds, size):
     return generalBounds
 
 
-def create_gen_model(var_bounds, genBounds, name):
+def create_gen_model(var_bounds, genBounds, name, inputData):
     cp_vars = create_variables(var_bounds, name)
     size = len(cp_vars)
     unSeq = generate_unary_sequences(size)
-    binSeq = generate_binary_sequences(size)
+    binSeq = generate_binary_sequences(size, inputData)
     x, y = symbols("x y")
     m = Model()
     mapping = []
@@ -428,11 +424,11 @@ def create_gen_model(var_bounds, genBounds, name):
     return m, cp_vars, mapping
 
 
-def filter_trivial(var_bounds, genBounds, size, name):
+def filter_trivial(var_bounds, genBounds, size, name, inputData):
     cp_vars = create_variables(var_bounds, name)
 
     unSeq = generate_unary_sequences(size)
-    binSeq = generate_binary_sequences(size)
+    binSeq = generate_binary_sequences(size, inputData)
     x, y = symbols("x y")
     for expr, inst in genBounds.items():
         e = sympify(expr)
