@@ -464,3 +464,17 @@ def filter_trivial(var_bounds, genBounds, size, name, inputData):
                         del genBounds[expr][seq]["u"]
                         break
     return genBounds
+
+if __name__ == "__main__":
+    import os, glob
+    import pandas as pd
+
+    all_files = glob.glob(os.path.join("", "type*.csv"))
+    files=[]
+    for f in all_files:
+        if not pd.read_csv(f, sep=',').empty:
+            files.append(f)
+
+    df_from_each_file = (pd.read_csv(f, sep=',') for f in files)
+    df_merged = pd.concat(df_from_each_file, ignore_index=True)
+    df_merged.to_csv("merged.csv")
