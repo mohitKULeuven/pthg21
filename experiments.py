@@ -178,7 +178,7 @@ class Instance:
         offset = 0
         for k, dims in self.tensors_dim.items():
             length = reduce(lambda a, b: a * b, dims)
-            d[k] = data[offset:offset+length]
+            d[k] = data[offset:offset+length].reshape(dims)
             offset += length
         return d
 
