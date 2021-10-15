@@ -48,7 +48,7 @@ def binary_operators(x, y):
 
 def generate_binary_expr(x, y):
     for b in binary_operators(x, y):
-        for u in generate_unary_exp(b):  # redundancy due to identity
+        for u in generate_unary_exp(b):
             yield u
 
 

@@ -178,7 +178,7 @@ class Instance:
         offset = 0
         for k, dims in self.tensors_dim.items():
             length = reduce(lambda a, b: a * b, dims)
-            d[k] = data[offset:offset+length].reshape(dims)
+            d[k] = data[offset:offset + length].reshape(dims)
             offset += length
         return d
 
@@ -258,6 +258,15 @@ class Instance:
         )
 
     def objective_function(self, data):
+        if self.problem_type == 3:
+            data = self.unflatten_data(data)
+            sum = 0
+            tmp = np.zeros([len(data["warehouses"]), len(data["customers"])])
+            for i, c in enumerate(data["customers"]):
+                tmp[c][i] = 1
+            sum += np.sum(np.multiply(self.inputData[0], data["warehouses"]))
+            sum += np.sum(np.multiply(self.inputData[1], tmp))
+            return sum
         return max(data)
 
     def check(self, model, model_vars):
@@ -323,7 +332,24 @@ def nested_map(f, tensor):
         return f(tensor)
 
 
+def extra_solutions(m, m_vars, existing_sol):
+    m2 = cpmpy.Model([c for c in m.constraints])
+    for sol in existing_sol:
+        m2 += ~cpmpy.all(m_vars == sol)
+    solutions = []
+
+    # print(m2)
+    while m2.solve():
+        solutions.append([v.value() for v in m_vars])
+        print([v.value() for v in m_vars])
+        m2 += cpmpy.any(m_vars != m_vars.value())
+        # m2 += ~cpmpy.all(m_vars == m_vars.value())
+        # print("inside: ",m2)
+    return solutions
+
+
 def instance_level(t):
+    output_dictionary = []
     pickle_var = {}
     print(f"Type {t}")
     with open(f"type{t:02d}.csv", "w") as csv_file:
@@ -345,15 +371,34 @@ def instance_level(t):
 
         instances = []
         for file in files:
+            print(file)
+            dictionary_instance = {"problemType": f"type{t:02d}"}
+            dictionary_instance["instance"] = int(file.split("/")[-1].split(".")[0][8:])
+            output_dictionary.append(dictionary_instance)
             with open(file) as f:
                 instances.append(Instance(json.load(f), t))
 
         # Learn propositional models and check their quality
         for i, instance in enumerate(instances):
+            assert int(files[i].split("/")[-1].split(".")[0][8:]) == i
             if instance.has_solutions():
                 m, m_vars, _, stats = instance.learn_model(propositional=True)
                 pickle_var[files[i]] = [m, m_vars]
                 percentage_pos, percentage_neg = instance.check(m, m_vars)
+                tests_classification = instance.test(m, m_vars)
+                output_dictionary[i]["tests"] = ["sol" if t else "nonsol" for t in tests_classification]
+                # all_data = np.vstack(
+                #     [instance.flatten_data(instance.pos_data), instance.flatten_data(instance.neg_data),
+                #      instance.flatten_data(instance.test_data)])
+
+                # flat_extra = extra_solutions(m, cpmpy.cpm_array(m_vars), all_data)
+                # extra = [instance.unflatten_data(d) for d in flat_extra]
+                #
+                # if instance.objective:
+                #     objectives = [instance.objective_function(d) for d in flat_extra]
+                #     for objective in objectives:
+                #         extra["objective"] = objective
+                # output_dictionary[i]["extras"] = extra
 
                 # print(f"\tInstance {i}")
                 # print("\t\tPropositional")
@@ -383,7 +428,6 @@ def instance_level(t):
         merged_bounds = reduce(combine_gen_bounds, gen_bounds)
         # print(merged_bounds)
         pickle_var[t] = [merged_bounds]
-        pickle.dump(pickle_var, open(f"type{t:02d}.pickle", "wb"))
 
         for i, instance in enumerate(instances):
             # print(f"\tInstance {i}")
@@ -406,9 +450,24 @@ def instance_level(t):
                         percentage_neg,
                     ]
                 )
+            else:
+                tests_classification = instance.test(merged_model, mm_vars)
+                output_dictionary[i]["tests"] = ["sol" if t else "nonsol" for t in tests_classification]
+
+                # flat_extra = extra_solutions(m, cpmpy.cpm_array(m_vars), instance.flatten_data(instance.test_data))
+                # extra = [instance.unflatten_data(d) for d in flat_extra]
+                #
+                # if instance.objective:
+                #     objectives = [instance.objective_function(d) for d in flat_extra]
+                #     for objective in objectives:
+                #         extra["objective"] = objective
+                #
+                # output_dictionary[i]["extras"] = extra
+
     csv_file.close()
-    # else:
-    #     print(f"\t\t\t{instance.test(merged_model, mm_vars)}")
+    pickle_var["output_json"] = output_dictionary
+    pickle.dump(pickle_var, open(f"type{t:02d}.pickle", "wb"))
+    return output_dictionary
 
 
 def type_level(t):
@@ -518,6 +577,10 @@ if __name__ == "__main__":
     # instance_level_generalised(args)
     # commonBounds=type_level(int(args[0]))
     # type_level_experiment()
-    t = [1]
-    pool = Pool(processes=len(t))
-    pool.map(instance_level, t)
+    # print(instance_level(t[0]))
+    output_dictionary = {"email": "", "name": ""}
+    t = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16]
+
+    pool = Pool(processes=min(len(t), 5))
+    results = pool.map(instance_level, t)
+    print(results)
