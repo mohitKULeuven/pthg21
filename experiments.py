@@ -592,9 +592,8 @@ if __name__ == "__main__":
     # commonBounds=type_level(int(args[0]))
     # type_level_experiment()
     # print(instance_level(t[0]))
-    output_dictionary = {"email": "", "name": ""}
-    t = [1]
+    t = [l for l in range(1, 17) if l != 9]
 
-    pool = Pool(processes=min(len(t), 5))
+    pool = Pool(processes=len(t))
     results = pool.map(instance_level, t)
     print(results)
