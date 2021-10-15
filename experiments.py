@@ -179,6 +179,7 @@ class Instance:
         for k, dims in self.tensors_dim.items():
             length = reduce(lambda a, b: a * b, dims)
             d[k] = data[:, offset:offset+length]
+            offset += length
         return d
 
     def example_count(self, positive):
