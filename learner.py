@@ -35,21 +35,28 @@ def unary_operators():
 
 
 def generate_unary_exp(x):
-    for u in unary_operators():
-        yield u(x)
+    yield x
+    # for u in unary_operators():
+    #     yield u(x)
 
 
 def binary_operators(x, y):
-    for u in unary_operators():
-        yield u(x) + u(y)
-        yield u(x) - u(y)
-        yield u(y) - u(x)
+    # for u in unary_operators():
+    yield x + y
+    yield x - y
+    yield y - x
 
 
 def generate_binary_expr(x, y):
-    for b in binary_operators(x, y):
-        for u in generate_unary_exp(b):
-            yield u
+    yield x + y
+    yield x - y
+    yield y - x
+    yield abs(y-x)
+    yield abs(x-y)
+
+    # for b in binary_operators(x, y):
+    #     for u in generate_unary_exp(b):
+    #         yield u
 
 
 def constraint_learner(solutions, n_vars):
@@ -254,7 +261,7 @@ def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=Fal
 
     i = 0
     while i < len(constraints):
-        m2 = Model(constraints[:i] + constraints[i + 1 :])
+        m2 = Model(constraints[:i] + constraints[i + 1:])
         m2 += ~all(constraints[i])
         if m2.solve():
             i += 1
@@ -267,7 +274,6 @@ def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=Fal
 
     expr_bounds = strip_empty_entries(expr_bounds)
     return expr_bounds, constraints
-
 
 
 def generate_unary_sequences(n):
@@ -321,7 +327,6 @@ def generate_binary_sequences(n, data=None):
 
     def all_pairs(n):
         return list(it.combinations(range(n), r=2))
-
 
     lst = {}
     if even(n):

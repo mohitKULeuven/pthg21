@@ -11,6 +11,7 @@ import learner
 import pickle
 import logging
 from multiprocessing import Pool
+from cpmpy.solvers import CPM_ortools
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +98,11 @@ def flatten(l):
 
 
 class Instance:
-    def __init__(self, json_data, problem_type):
+    def __init__(self, number, json_data, problem_type):
         tensors_lb = {}
         tensors_ub = {}
+
+        self.number = number
 
         self.problem_type = problem_type
         self.inputData = None
@@ -334,12 +337,15 @@ def nested_map(f, tensor):
 
 def extra_solutions(m, m_vars, existing_sol):
     m2 = cpmpy.Model([c for c in m.constraints])
+    m2.solve()
     for sol in existing_sol:
         m2 += ~cpmpy.all(m_vars == sol)
     solutions = []
-
+    m2 += sum(m_vars) >= 0
     # print(m2)
+    m2 = CPM_ortools(m2)
     while m2.solve():
+        # print(m2)
         solutions.append([v.value() for v in m_vars])
         print([v.value() for v in m_vars])
         m2 += cpmpy.any(m_vars != m_vars.value())
@@ -348,8 +354,15 @@ def extra_solutions(m, m_vars, existing_sol):
     return solutions
 
 
+def save_results_json(problem_type, instance, tests_classification):
+    with open(f"results_type{problem_type}_instance{instance}.json", "w") as f:
+        json.dump({"problemType": f"type{t:02d}",
+                   "instance": instance,
+                   "tests": ["sol" if t else "nonsol" for t in tests_classification]}, f)
+    # int(file.split("/")[-1].split(".")[0][8:])
+
+
 def instance_level(t):
-    output_dictionary = []
     pickle_var = {}
     print(f"Type {t}")
     with open(f"type{t:02d}.csv", "w") as csv_file:
@@ -372,25 +385,27 @@ def instance_level(t):
         instances = []
         for file in files:
             print(file)
-            dictionary_instance = {"problemType": f"type{t:02d}"}
-            dictionary_instance["instance"] = int(file.split("/")[-1].split(".")[0][8:])
-            output_dictionary.append(dictionary_instance)
             with open(file) as f:
-                instances.append(Instance(json.load(f), t))
+                instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
 
         # Learn propositional models and check their quality
         for i, instance in enumerate(instances):
-            assert int(files[i].split("/")[-1].split(".")[0][8:]) == i
             if instance.has_solutions():
                 m, m_vars, _, stats = instance.learn_model(propositional=True)
+                print(m.constraints)
+                print([(v, v.value()) for v in m_vars])
                 pickle_var[files[i]] = [m, m_vars]
                 percentage_pos, percentage_neg = instance.check(m, m_vars)
+                print(m.constraints)
+                print([(v, v.value()) for v in m_vars])
                 tests_classification = instance.test(m, m_vars)
-                output_dictionary[i]["tests"] = ["sol" if t else "nonsol" for t in tests_classification]
+                save_results_json(instance.problem_type, instance.number, tests_classification)
+
                 # all_data = np.vstack(
                 #     [instance.flatten_data(instance.pos_data), instance.flatten_data(instance.neg_data),
                 #      instance.flatten_data(instance.test_data)])
-
+                # print(m.constraints)
+                # print([(v, v.value()) for v in m_vars])
                 # flat_extra = extra_solutions(m, cpmpy.cpm_array(m_vars), all_data)
                 # extra = [instance.unflatten_data(d) for d in flat_extra]
                 #
@@ -452,7 +467,7 @@ def instance_level(t):
                 )
             else:
                 tests_classification = instance.test(merged_model, mm_vars)
-                output_dictionary[i]["tests"] = ["sol" if t else "nonsol" for t in tests_classification]
+                save_results_json(instance.problem_type, instance.number, tests_classification)
 
                 # flat_extra = extra_solutions(m, cpmpy.cpm_array(m_vars), instance.flatten_data(instance.test_data))
                 # extra = [instance.unflatten_data(d) for d in flat_extra]
@@ -465,9 +480,8 @@ def instance_level(t):
                 # output_dictionary[i]["extras"] = extra
 
     csv_file.close()
-    pickle_var["output_json"] = output_dictionary
-    pickle.dump(pickle_var, open(f"type{t:02d}.pickle", "wb"))
-    return output_dictionary
+    with open(f"pickled_models_type{t:02d}.pickle") as pickle_file:
+        pickle.dump(pickle_var, pickle_file)
 
 
 def type_level(t):
@@ -579,7 +593,7 @@ if __name__ == "__main__":
     # type_level_experiment()
     # print(instance_level(t[0]))
     output_dictionary = {"email": "", "name": ""}
-    t = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16]
+    t = [1]
 
     pool = Pool(processes=min(len(t), 5))
     results = pool.map(instance_level, t)
