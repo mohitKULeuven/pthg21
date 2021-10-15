@@ -356,7 +356,7 @@ def extra_solutions(m, m_vars, existing_sol):
 
 def save_results_json(problem_type, instance, tests_classification):
     with open(f"results_type{problem_type}_instance{instance}.json", "w") as f:
-        json.dump({"problemType": f"type{t:02d}",
+        json.dump({"problemType": f"type{problem_type:02d}",
                    "instance": instance,
                    "tests": ["sol" if t else "nonsol" for t in tests_classification]}, f)
     # int(file.split("/")[-1].split(".")[0][8:])
