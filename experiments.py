@@ -149,6 +149,14 @@ class Instance:
                 all_data = np.hstack([all_data, data[k]])
         return all_data
 
+    def unflatten_data(self, data):
+        d = dict()
+        offset = 0
+        for k, dims in self.tensors_dim.items():
+            length = reduce(lambda a, b: a * b, dims)
+            d[k] = data[:, offset:offset+length]
+        return d
+
     def example_count(self, positive):
         data = self.pos_data if positive else self.neg_data
         for k in self.tensors_dim:
