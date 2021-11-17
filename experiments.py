@@ -234,7 +234,12 @@ class Instance:
 
             full_constraints_count += len(m.constraints)
 
-            filtered_bounds[k], constraints = learner.filter_redundant(
+            # XXX, This one creates 'new' variables, which breaks solution enumeration
+            # can you give it m_vars and have it reuse those?
+            # or work directly on the constraint set, without creating new ones?
+            # actually.. this COMPLETELY overwrites the work done above?
+            # I'll just overwrite m_vars the same
+            filtered_bounds[k], constraints, m_vars = learner.filter_redundant(
                 var_bounds,
                 expr_bounds,
                 name=k,

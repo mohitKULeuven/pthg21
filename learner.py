@@ -250,11 +250,11 @@ def strip_empty_entries(dictionary):
 def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=False):
     mapping = None
     if propositional:
-        m, _ = create_model(var_bounds, expr_bounds, name=name)
+        m, m_vars = create_model(var_bounds, expr_bounds, name=name)
         # reverse, so more complex are eliminated first
         constraints = reversed(m.constraints)
     else:
-        m, _, mapping = create_gen_model(var_bounds, expr_bounds, name=name, inputData=inputData)
+        m, m_vars, mapping = create_gen_model(var_bounds, expr_bounds, name=name, inputData=inputData)
         constraints = m.constraints
 
     constraints = [c for c in constraints]  # take copy
@@ -273,7 +273,7 @@ def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=Fal
                 del mapping[i]
 
     expr_bounds = strip_empty_entries(expr_bounds)
-    return expr_bounds, constraints
+    return expr_bounds, constraints, m_vars
 
 
 def generate_unary_sequences(n):
