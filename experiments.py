@@ -340,23 +340,29 @@ def nested_map(f, tensor):
         return f(tensor)
 
 
-def extra_solutions(m, m_vars, existing_sol):
+def extra_solutions(m, m_vars, existing_sol, solution_limit=20):
     m2 = cpmpy.Model([c for c in m.constraints])
     m2.solve()
     for sol in existing_sol:
+        # Tias: this is slow... we should probably use a negative table perhaps
+        # though not yet supported in plain CPMpy I think ; )
         m2 += ~cpmpy.all(m_vars == sol)
     solutions = []
     m2 += sum(m_vars) >= 0
     # print(m2)
-    m2 = CPM_ortools(m2)
-    while m2.solve():
-        # print(m2)
-        solutions.append([v.value() for v in m_vars])
-        print([v.value() for v in m_vars])
-        m2 += cpmpy.any(m_vars != m_vars.value())
-        # m2 += ~cpmpy.all(m_vars == m_vars.value())
-        # print("inside: ",m2)
-    return solutions
+
+    # new-style generate all
+    from cpmpy_helper import solveAll
+    from cpmpy.solvers import CPM_ortools
+    s2 = CPM_ortools(m2)
+
+    collector = []
+    def myprint():
+        print(m_vars.value())
+        collector.append(m_vars.value())
+    solveAll(s2, display=myprint, solution_limit=solution_limit)
+
+    return collector
 
 
 def save_results_json(problem_type, instance, tests_classification):
