@@ -212,7 +212,7 @@ def is_sat(m, m_vars, sols, exp, objectives=None):
 def check_solutions(m, mvars, sols, exp, objectives=None):
     if len(sols) == 0:
         print("No solutions to check")
-        return 1.0
+        return 100
 
     sats = is_sat(m, mvars, sols, exp, objectives)
     logger.info(f"{sum(sats)} satisfied out of {len(sats)}")

@@ -388,6 +388,7 @@ def instance_level(t):
                 "num_neg",
                 "percentage_neg",
                 "time_taken",
+                "test_time_taken",
                 "number_of_constraints",
                 "constraints_after_filter",
             ]
@@ -408,9 +409,12 @@ def instance_level(t):
                 m, m_vars, _, stats = instance.learn_model(propositional=True, filter=filter)
                 time_taken = time.time()-start
                 pickle_var[files[i]] = [m, m_vars]
+
+                start = time.time()
                 percentage_pos, percentage_neg = instance.check(m, m_vars)
-                tests_classification = instance.test(m, m_vars)
-                save_results_json(instance.problem_type, instance.number, tests_classification)
+                test_time_taken = time.time() - start
+                # tests_classification = instance.test(m, m_vars)
+                # save_results_json(instance.problem_type, instance.number, tests_classification)
 
                 # all_data = np.vstack(
                 #     [instance.flatten_data(instance.pos_data), instance.flatten_data(instance.neg_data),
@@ -443,6 +447,7 @@ def instance_level(t):
                         len(list(instance.neg_data.values())[0]),
                         percentage_neg,
                         time_taken,
+                        test_time_taken,
                         stats["all_constraints"],
                         stats["reduced_constraints"],
                     ]
