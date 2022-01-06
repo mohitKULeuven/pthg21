@@ -2,7 +2,7 @@ import itertools as it
 from sympy import symbols, lambdify, sympify, Symbol
 import numpy as np
 import logging
-
+import json
 from cpmpy import *
 
 from cpmpy.transformations.flatten_model import get_or_make_var
@@ -247,18 +247,8 @@ def strip_empty_entries(dictionary):
     return new_data
 
 
-def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=False):
-    mapping = None
-    if propositional:
-        m, m_vars = create_model(var_bounds, expr_bounds, name=name)
-        # reverse, so more complex are eliminated first
-        constraints = reversed(m.constraints)
-    else:
-        m, m_vars, mapping = create_gen_model(var_bounds, expr_bounds, name=name, inputData=inputData)
-        constraints = m.constraints
-
+def filter_redundant(expr_bounds, constraints, mapping=None):
     constraints = [c for c in constraints]  # take copy
-
     i = 0
     while i < len(constraints):
         m2 = Model(constraints[:i] + constraints[i + 1:])
@@ -273,7 +263,7 @@ def filter_redundant(var_bounds, expr_bounds, name, inputData, propositional=Fal
                 del mapping[i]
 
     expr_bounds = strip_empty_entries(expr_bounds)
-    return expr_bounds, constraints, m_vars
+    return expr_bounds, constraints
 
 
 def generate_unary_sequences(n):
@@ -469,12 +459,17 @@ if __name__ == "__main__":
     import os, glob
     import pandas as pd
 
-    all_files = glob.glob(os.path.join("", "type*.csv"))
-    files=[]
+    all_files = glob.glob(os.path.join("results/", "*.json"))
+    final_output={"email":"mohit.kumar@cs.kuleuven.be", "name":"Mohit Kumar"}
+    results=[]
     for f in all_files:
-        if not pd.read_csv(f, sep=',').empty:
-            files.append(f)
+        tmp=json.load(open(f))
+        if tmp["tests"]:
+            results.append(tmp)
+    final_output["results"]=results
+    with open(f"final_results.json", "w") as f:
+        json.dump(final_output, f)
 
-    df_from_each_file = (pd.read_csv(f, sep=',') for f in files)
-    df_merged = pd.concat(df_from_each_file, ignore_index=True)
-    df_merged.to_csv("merged.csv")
+    # df_from_each_file = (pd.read_csv(f, sep=',') for f in all_files)
+    # df_merged = pd.concat(df_from_each_file, ignore_index=True)
+    # df_merged.to_csv("merged.csv")

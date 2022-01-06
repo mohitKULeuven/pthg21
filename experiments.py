@@ -11,76 +11,77 @@ import learner
 import pickle
 import logging
 from multiprocessing import Pool
+import time
 from cpmpy.solvers import CPM_ortools
 
 logger = logging.getLogger(__name__)
 
 
-def instance_level_generalised(args):
-    data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
-    unseen_data = json.load(open(f"instances/type0{args[0]}/instance{args[2]}.json"))
-    if data["solutions"]:
-        posData = np.array([np.array(d["list"]).flatten() for d in data["solutions"]])
-        negData = np.array(
-            [np.array(d["list"]).flatten() for d in data["nonSolutions"]]
-        )
-
-        bounds = learner.constraint_learner(posData, posData.shape[1])
-        genBounds = learner.generalise_bounds(bounds, posData.shape[1])
-        genBounds = learner.filter_trivial(data, genBounds, posData.shape[1])
-        # print(genBounds)
-        genBounds = learner.filter_redundant(data, genBounds)
-        # print("##################")
-        print(genBounds)
-
-        mTrain, mvarsTrain, _ = learner.create_gen_model(data, genBounds)
-
-        mTest, mvarsTest, _ = learner.create_gen_model(unseen_data, genBounds)
-        # print(mTrain)
-
-        posDataObj, negDataObj, unseen_posDataObj, unseen_negDataObj = (
-            None,
-            None,
-            None,
-            None,
-        )
-        if "objective" in data["solutions"][0]:
-            posDataObj = np.array([d["objective"] for d in data["solutions"]])
-            negDataObj = np.array([d["objective"] for d in data["nonSolutions"]])
-            unseen_posDataObj = np.array(
-                [d["objective"] for d in unseen_data["solutions"]]
-            )
-            unseen_negDataObj = np.array(
-                [d["objective"] for d in unseen_data["nonSolutions"]]
-            )
-
-        #
-
-        unseen_posData = np.array(
-            [np.array(d["list"]).flatten() for d in unseen_data["solutions"]]
-        )
-        unseen_negData = np.array(
-            [np.array(d["list"]).flatten() for d in unseen_data["nonSolutions"]]
-        )
-
-        perc_pos = learner.check_solutions(mTrain, mvarsTrain, posData, max, posDataObj)
-        perc_neg = 100 - learner.check_solutions(
-            mTrain, mvarsTrain, negData, max, negDataObj
-        )
-
-        perc_unseen_pos = learner.check_solutions(
-            mTest, mvarsTest, unseen_posData, max, unseen_posDataObj
-        )
-        perc_unseen_neg = 100 - learner.check_solutions(
-            mTest, mvarsTest, unseen_negData, max, unseen_negDataObj
-        )
-
-        print(
-            f"{perc_pos}% positives and {perc_neg}% negatives are correctly classified in training"
-        )
-        print(
-            f"{perc_unseen_pos}% positives and {perc_unseen_neg}% negatives are correctly classified in test"
-        )
+# def instance_level_generalised(args):
+#     data = json.load(open(f"instances/type0{args[0]}/instance{args[1]}.json"))
+#     unseen_data = json.load(open(f"instances/type0{args[0]}/instance{args[2]}.json"))
+#     if data["solutions"]:
+#         posData = np.array([np.array(d["list"]).flatten() for d in data["solutions"]])
+#         negData = np.array(
+#             [np.array(d["list"]).flatten() for d in data["nonSolutions"]]
+#         )
+#
+#         bounds = learner.constraint_learner(posData, posData.shape[1])
+#         genBounds = learner.generalise_bounds(bounds, posData.shape[1])
+#         genBounds = learner.filter_trivial(data, genBounds, posData.shape[1])
+#         # print(genBounds)
+#         genBounds = learner.filter_redundant(data, genBounds)
+#         # print("##################")
+#         print(genBounds)
+#
+#         mTrain, mvarsTrain, _ = learner.create_gen_model(data, genBounds)
+#
+#         mTest, mvarsTest, _ = learner.create_gen_model(unseen_data, genBounds)
+#         # print(mTrain)
+#
+#         posDataObj, negDataObj, unseen_posDataObj, unseen_negDataObj = (
+#             None,
+#             None,
+#             None,
+#             None,
+#         )
+#         if "objective" in data["solutions"][0]:
+#             posDataObj = np.array([d["objective"] for d in data["solutions"]])
+#             negDataObj = np.array([d["objective"] for d in data["nonSolutions"]])
+#             unseen_posDataObj = np.array(
+#                 [d["objective"] for d in unseen_data["solutions"]]
+#             )
+#             unseen_negDataObj = np.array(
+#                 [d["objective"] for d in unseen_data["nonSolutions"]]
+#             )
+#
+#         #
+#
+#         unseen_posData = np.array(
+#             [np.array(d["list"]).flatten() for d in unseen_data["solutions"]]
+#         )
+#         unseen_negData = np.array(
+#             [np.array(d["list"]).flatten() for d in unseen_data["nonSolutions"]]
+#         )
+#
+#         perc_pos = learner.check_solutions(mTrain, mvarsTrain, posData, max, posDataObj)
+#         perc_neg = 100 - learner.check_solutions(
+#             mTrain, mvarsTrain, negData, max, negDataObj
+#         )
+#
+#         perc_unseen_pos = learner.check_solutions(
+#             mTest, mvarsTest, unseen_posData, max, unseen_posDataObj
+#         )
+#         perc_unseen_neg = 100 - learner.check_solutions(
+#             mTest, mvarsTest, unseen_negData, max, unseen_negDataObj
+#         )
+#
+#         print(
+#             f"{perc_pos}% positives and {perc_neg}% negatives are correctly classified in training"
+#         )
+#         print(
+#             f"{perc_unseen_pos}% positives and {perc_unseen_neg}% negatives are correctly classified in test"
+#         )
 
 
 def flatten(l):
@@ -191,7 +192,7 @@ class Instance:
             return data[k].shape[0]
         raise RuntimeError("Tensor dimensions are empty")
 
-    def learn_model(self, propositional, fraction_training=1.0):
+    def learn_model(self, propositional, filter=True, fraction_training=1.0):
         if not self.has_solutions():
             raise AttributeError("Cannot learn from instance without solutions")
 
@@ -215,6 +216,7 @@ class Instance:
             expr_bounds = learner.constraint_learner(
                 pos_data[training_indices, :], pos_data.shape[1]
             )
+            mapping=None
             if not propositional:
                 expr_bounds = learner.generalise_bounds(
                     expr_bounds, pos_data.shape[1], self.jsonSeq
@@ -226,7 +228,7 @@ class Instance:
                     name=k,
                     inputData=self.jsonSeq,
                 )
-                m, m_vars, _ = learner.create_gen_model(
+                m, m_vars, mapping = learner.create_gen_model(
                     var_bounds, expr_bounds, name=k, inputData=self.jsonSeq
                 )
             else:
@@ -234,18 +236,14 @@ class Instance:
 
             full_constraints_count += len(m.constraints)
 
-            # XXX, This one creates 'new' variables, which breaks solution enumeration
-            # can you give it m_vars and have it reuse those?
-            # or work directly on the constraint set, without creating new ones?
-            # actually.. this COMPLETELY overwrites the work done above?
-            # I'll just overwrite m_vars the same
-            filtered_bounds[k], constraints, m_vars = learner.filter_redundant(
-                var_bounds,
-                expr_bounds,
-                name=k,
-                inputData=self.jsonSeq,
-                propositional=propositional,
-            )
+            if filter:
+                filtered_bounds[k], constraints = learner.filter_redundant(
+                    expr_bounds,
+                    m.constraints,
+                    mapping
+                )
+            else:
+                filtered_bounds[k], constraints = expr_bounds, m.constraints
 
             reduced_model_constraint_count = len(constraints)
             logger.info(
@@ -374,9 +372,10 @@ def save_results_json(problem_type, instance, tests_classification):
 
 
 def instance_level(t):
+    filter=True
     pickle_var = {}
     print(f"Type {t}")
-    with open(f"type{t:02d}.csv", "w") as csv_file:
+    with open(f"type{t:02d}_filter_{filter}.csv", "w") as csv_file:
         file_writer = csv.writer(csv_file, delimiter=",")
         file_writer.writerow(
             [
@@ -388,6 +387,9 @@ def instance_level(t):
                 "percentage_pos",
                 "num_neg",
                 "percentage_neg",
+                "time_taken",
+                "number_of_constraints",
+                "constraints_after_filter",
             ]
         )
         path = f"instances/type{t:02d}/inst*.json"
@@ -402,7 +404,9 @@ def instance_level(t):
         # Learn propositional models and check their quality
         for i, instance in enumerate(instances):
             if instance.has_solutions():
-                m, m_vars, _, stats = instance.learn_model(propositional=True)
+                start = time.time()
+                m, m_vars, _, stats = instance.learn_model(propositional=True, filter=filter)
+                time_taken = time.time()-start
                 pickle_var[files[i]] = [m, m_vars]
                 percentage_pos, percentage_neg = instance.check(m, m_vars)
                 tests_classification = instance.test(m, m_vars)
@@ -438,43 +442,47 @@ def instance_level(t):
                         percentage_pos,
                         len(list(instance.neg_data.values())[0]),
                         percentage_neg,
+                        time_taken,
+                        stats["all_constraints"],
+                        stats["reduced_constraints"],
                     ]
                 )
 
-        gen_bounds = []
-        for i, instance in enumerate(instances):
-            if instance.has_solutions():
-                _, _, filtered_bounds, _ = instance.learn_model(propositional=False)
-                gen_bounds.append(filtered_bounds)
 
-        merged_bounds = reduce(combine_gen_bounds, gen_bounds)
-        # print(merged_bounds)
-        pickle_var[t] = [merged_bounds]
-
-        for i, instance in enumerate(instances):
-            # print(f"\tInstance {i}")
-            # print("\t\tLifted")
-            merged_model, mm_vars = instance.get_combined_model(merged_bounds)
-            # print(*[f"\t\t{c}" for c in flatten(merged_model.constraints)], sep="\n")
-
-            if instance.has_solutions():
-                percentage_pos, percentage_neg = instance.check(merged_model, mm_vars)
-                # print(f"\t\t\tpos: {int(percentage_pos)}%  |  neg:  {int(percentage_neg)}%")
-                file_writer.writerow(
-                    [
-                        t,
-                        files[i],
-                        len(merged_model.constraints),
-                        "type level",
-                        len(list(instance.pos_data.values())[0]),
-                        percentage_pos,
-                        len(list(instance.neg_data.values())[0]),
-                        percentage_neg,
-                    ]
-                )
-            else:
-                tests_classification = instance.test(merged_model, mm_vars)
-                save_results_json(instance.problem_type, instance.number, tests_classification)
+        # gen_bounds = []
+        # for i, instance in enumerate(instances):
+        #     if instance.has_solutions():
+        #         _, _, filtered_bounds, _ = instance.learn_model(propositional=False, filter=filter)
+        #         gen_bounds.append(filtered_bounds)
+        #
+        # merged_bounds = reduce(combine_gen_bounds, gen_bounds)
+        # # print(merged_bounds)
+        # pickle_var[t] = [merged_bounds]
+        #
+        # for i, instance in enumerate(instances):
+        #     # print(f"\tInstance {i}")
+        #     # print("\t\tLifted")
+        #     merged_model, mm_vars = instance.get_combined_model(merged_bounds)
+        #     # print(*[f"\t\t{c}" for c in flatten(merged_model.constraints)], sep="\n")
+        #
+        #     if instance.has_solutions():
+        #         percentage_pos, percentage_neg = instance.check(merged_model, mm_vars)
+        #         # print(f"\t\t\tpos: {int(percentage_pos)}%  |  neg:  {int(percentage_neg)}%")
+        #         file_writer.writerow(
+        #             [
+        #                 t,
+        #                 files[i],
+        #                 len(merged_model.constraints),
+        #                 "type level",
+        #                 len(list(instance.pos_data.values())[0]),
+        #                 percentage_pos,
+        #                 len(list(instance.neg_data.values())[0]),
+        #                 percentage_neg,
+        #             ]
+        #         )
+        #     else:
+        #         tests_classification = instance.test(merged_model, mm_vars)
+        #         save_results_json(instance.problem_type, instance.number, tests_classification)
 
                 # flat_extra = extra_solutions(m, cpmpy.cpm_array(m_vars), instance.flatten_data(instance.test_data))
                 # extra = [instance.unflatten_data(d) for d in flat_extra]
@@ -487,7 +495,7 @@ def instance_level(t):
                 # output_dictionary[i]["extras"] = extra
 
     csv_file.close()
-    with open(f"pickled_models_type{t:02d}.pickle") as pickle_file:
+    with open(f"pickled_models_type{t:02d}_filter_{filter}.pickle") as pickle_file:
         pickle.dump(pickle_var, pickle_file)
 
 
