@@ -372,9 +372,9 @@ def save_results_json(problem_type, instance, tests_classification):
 
 
 def instance_level(t):
-    filter=True
+    filter=False
     pickle_var = {}
-    print(f"Type {t}")
+    print(f"Starting type {t}")
     with open(f"type{t:02d}_filter_{filter}.csv", "w") as csv_file:
         file_writer = csv.writer(csv_file, delimiter=",")
         file_writer.writerow(
@@ -398,7 +398,6 @@ def instance_level(t):
 
         instances = []
         for file in files:
-            print(file)
             with open(file) as f:
                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
 
@@ -408,11 +407,15 @@ def instance_level(t):
                 start = time.time()
                 m, m_vars, _, stats = instance.learn_model(propositional=True, filter=filter)
                 time_taken = time.time()-start
+                print(f"\tType {t}, {i}: {files[i]}, learned model in {time_taken}")
                 pickle_var[files[i]] = [m, m_vars]
 
                 start = time.time()
                 percentage_pos, percentage_neg = instance.check(m, m_vars)
                 test_time_taken = time.time() - start
+                npos = instance.flatten_data(instance.pos_data).shape[0]
+                nneg = instance.flatten_data(instance.neg_data).shape[0]
+                print(f"\t\tType {t}, {i}: checked {npos+nneg} instances in {test_time_taken}")
                 # tests_classification = instance.test(m, m_vars)
                 # save_results_json(instance.problem_type, instance.number, tests_classification)
 
