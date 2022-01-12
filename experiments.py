@@ -371,7 +371,7 @@ def save_results_json(problem_type, instance, tests_classification):
     # int(file.split("/")[-1].split(".")[0][8:])
 
 
-def instance_level(t, filter=False, do_check=True):
+def instance_level(t, filter=False, do_check=False):
     pickle_var = {}
     print(f"Starting type {t}")
     with open(f"type{t:02d}_filter_{filter}.csv", "w") as csv_file:
@@ -406,7 +406,7 @@ def instance_level(t, filter=False, do_check=True):
                 start = time.time()
                 m, m_vars, _, stats = instance.learn_model(propositional=True, filter=filter)
                 time_taken = time.time()-start
-                print(f"\tType {t}, {i}: {files[i]}, learned model in {time_taken}")
+                print(f"\tType {t}, {i}: {files[i]}, learned model of {stats['all_constraints']} cons in {time_taken}")
                 pickle_var[files[i]] = [m, m_vars]
 
                 if do_check:
