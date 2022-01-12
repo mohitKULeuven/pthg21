@@ -371,8 +371,7 @@ def save_results_json(problem_type, instance, tests_classification):
     # int(file.split("/")[-1].split(".")[0][8:])
 
 
-def instance_level(t):
-    filter=False
+def instance_level(t, filter=False, do_check=True):
     pickle_var = {}
     print(f"Starting type {t}")
     with open(f"type{t:02d}_filter_{filter}.csv", "w") as csv_file:
@@ -410,12 +409,16 @@ def instance_level(t):
                 print(f"\tType {t}, {i}: {files[i]}, learned model in {time_taken}")
                 pickle_var[files[i]] = [m, m_vars]
 
-                start = time.time()
-                percentage_pos, percentage_neg = instance.check(m, m_vars)
-                test_time_taken = time.time() - start
-                npos = instance.flatten_data(instance.pos_data).shape[0]
-                nneg = instance.flatten_data(instance.neg_data).shape[0]
-                print(f"\t\tType {t}, {i}: checked {npos+nneg} instances in {test_time_taken}")
+                if do_check:
+                    start = time.time()
+                    percentage_pos, percentage_neg = instance.check(m, m_vars)
+                    test_time_taken = time.time() - start
+                    npos = instance.flatten_data(instance.pos_data).shape[0]
+                    nneg = instance.flatten_data(instance.neg_data).shape[0]
+                    print(f"\t\tType {t}, {i}: checked {npos+nneg} instances in {test_time_taken}")
+                else:
+                    percentage_pos, percentage_neg = 0.0, 0.0
+                    test_time_taken = 0.0
                 # tests_classification = instance.test(m, m_vars)
                 # save_results_json(instance.problem_type, instance.number, tests_classification)
 
