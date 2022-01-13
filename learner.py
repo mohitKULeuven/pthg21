@@ -52,7 +52,7 @@ def generate_binary_expr(x, y):
     yield x - y
     yield y - x
     yield abs(y-x)
-    yield abs(x-y)
+    # yield abs(x-y)
 
     # for b in binary_operators(x, y):
     #     for u in generate_unary_exp(b):
