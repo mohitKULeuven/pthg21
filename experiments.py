@@ -8,7 +8,9 @@ import learner
 import pickle
 import logging
 import time
-from cpmpy.solvers import CPM_ortools
+
+from instance import Instance
+from learn import learn
 
 logger = logging.getLogger(__name__)
 
@@ -391,8 +393,21 @@ if __name__ == "__main__":
     # commonBounds=type_level(int(args[0]))
     # type_level_experiment()
     # print(instance_level(t[0]))
-    t = [l for l in range(1, 17) if l != 9]
+    # t = [l for l in range(1, 17) if l != 9]
+    #
+    # pool = Pool(processes=len(t))
+    # results = pool.map(instance_level, t)
+    # print(results)
 
-    pool = Pool(processes=len(t))
-    results = pool.map(instance_level, t)
-    print(results)
+    # types = [l for l in range(1, 17) if l != 9]
+    types = [1]
+    for t in types:
+        with open(f"type{t:02d}.csv", "w") as csv_file:
+            path = f"instances/type{t:02d}/inst*.json"
+            files = sorted(glob.glob(path))
+            instances = []
+            for file in files:
+                with open(file) as f:
+                    instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
+            learn(instances)
+
