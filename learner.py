@@ -4,6 +4,11 @@ import numpy as np
 import logging
 import json
 from cpmpy import *
+from cpmpy.solvers import CPM_ortools
+from cpmpy.solvers.ortools import OrtSolutionCounter
+from cpmpy_helper import solveAll
+from instance import Instance
+import time
 
 from cpmpy.transformations.flatten_model import get_or_make_var
 
@@ -200,8 +205,10 @@ def create_model(var_bounds, expr_bounds, name):
 def is_sat(m, m_vars, sols, exp, objectives=None):
     sats = []
     for i, sol in enumerate(sols):
+        # print(i, sol)
         m2 = Model([c for c in m.constraints])
-        m2 += m_vars == sol
+        m2 += [m_var == sol[i] for i, m_var in enumerate(m_vars)]
+        # print(m2)
         sat = m2.solve()
         if objectives is not None and sat:
             sat = exp(sol) == objectives[i]
@@ -217,6 +224,90 @@ def check_solutions(m, mvars, sols, exp, objectives=None):
     sats = is_sat(m, mvars, sols, exp, objectives)
     logger.info(f"{sum(sats)} satisfied out of {len(sats)}")
     return sum(sats) * 100.0 / len(sats)
+
+def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objective_exp, objective_values):
+    if sols is None:
+        print("No solutions to check")
+        return 100
+
+    print("Alternative method, positives")
+    s = SolverLookup.get("ortools", m)
+    # print()
+    s += Table(
+        np.hstack([cp_vars[k].flatten() for k in cp_vars]),
+        [np.hstack([sol[k].flatten() for k in cp_vars]) for sol in sols],
+    )
+    cnt = solveAll(s)
+    print(cnt, "of", len(sols))
+    return cnt * 100.0 / len(sols)
+
+def solutions_sample(model:Model, instance:Instance, size=1000):
+    vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
+    vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
+    vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
+    # print(vars, vars_lb, vars_ub)
+    sols=[]
+    while len(sols) < size:
+        sol=[]
+        m_copy = Model([c for c in model.constraints])
+        for i,var in enumerate(vars):
+            random_val = np.random.randint(vars_lb[i], vars_ub[i])
+            # print(random_val)
+            sol.append(random_val)
+            m_copy += [var == random_val]
+        if m_copy.solve():
+            sols.append(sol)
+    return sols
+
+def solutions(model:Model, instance:Instance, size=None):
+    sols = []
+    vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
+    while model.solve():
+        # print([var.value() for var in vars])
+        sols.append([var.value() for var in vars])
+        model += ~all([var == var.value() for var in vars])
+    return sols
+
+def statistic(model1, model2, instance: Instance, size=100):
+    sols = solutions_sample(model1, instance, size)
+    vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
+    s = SolverLookup.get("ortools", model2)
+    s += Table(vars, sols)
+    cnt = solveAll(s)
+    print(f"Number of solutions: {len(sols)}")
+    return cnt * 100 / len(sols)
+
+def compare_models(learned_model:Model, target_model: Model, instance):
+    recall = statistic(target_model, learned_model, instance)
+    precision = statistic(learned_model, target_model, instance)
+    print(f"Precision: {precision}, Recall: {recall}")
+    return precision, recall
+
+def compare_models_count(learned_model:Model, target_model: Model, cp_vars):
+    s = CPM_ortools(target_model)
+    cb = OrtSolutionCounter()
+    s.solve(enumerate_all_solutions=True, solution_callback=cb)
+    target_count = cb.solution_count()
+    print(f"target_count: {target_count}")
+
+    s = CPM_ortools(learned_model)
+    cb = OrtSolutionCounter()
+    s.solve(enumerate_all_solutions=True, solution_callback=cb)
+    learned_count = cb.solution_count()
+    print(f"learned_count: {learned_count}")
+
+    combined_model = Model([c for c in learned_model.constraints])
+    combined_model.constraints.extend([c for c in target_model.constraints])
+    s = CPM_ortools(combined_model)
+    cb = OrtSolutionCounter()
+    s.solve(enumerate_all_solutions=True, solution_callback=cb)
+    combined_count = cb.solution_count()
+    print(f"combined_count: {combined_count}")
+
+    recall = combined_count * 100 / target_count
+    precision = combined_count * 100 / learned_count
+    print(f"Precision: {precision}, Recall: {recall}")
+    return precision, recall
 
 
 def check_obective(exp, sols, objectives, verbose=False):

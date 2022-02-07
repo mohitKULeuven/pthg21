@@ -10,7 +10,9 @@ import logging
 import time
 
 from instance import Instance
-from learn import learn
+from learn import learn, create_gen_model
+import sys
+from instances.type01 import model_type01
 
 logger = logging.getLogger(__name__)
 
@@ -387,6 +389,74 @@ def type_level_experiment():
     csvfile.close()
 
 
+def generalized_learning_experiment(types):
+    csvfile = open(f"type_level_results.csv", "w")
+    filewriter = csv.writer(csvfile, delimiter=",")
+    filewriter.writerow(
+        [
+            "type",
+            "instance",
+            "total_constraints",
+            "learned_constraints",
+            "learning_time",
+            "testing_time",
+            "recall",
+            "precision"
+        ]
+    )
+    pickleVar = {}
+    for t in types:
+        print(f"type{t}")
+        with open(f"type {t:02d}.csv", "w") as csv_file:
+            path = f"instances/type{t:02d}/inst*.json"
+            files = sorted(glob.glob(path))
+            instances = []
+            for file in files:
+                with open(file) as f:
+                    instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
+            start = time.time()
+            bounding_expressions = learn(instances)
+            learning_time = time.time() - start
+            pickleVar[t] = bounding_expressions
+
+            for instance in instances[:1]:
+                # len_pos, len_neg = 0, 0
+                print(f"instance {instance.number}")
+                learned_model, total_constraints = create_gen_model(bounding_expressions, instance)
+                start_test = time.time()
+                precision, recall = learner.compare_models(learned_model, model_type01(instance), instance)
+                # recall = cc*100/tc
+                # precision = cc*100/lc
+                # print(recall, precision)
+                # perc_pos, perc_neg = None, None
+                # if instance.pos_data is not None:
+                #     len_pos = len(instance.pos_data)
+                #     perc_pos = learner.check_solutions_fast(
+                #         learned_model, instance.cp_vars, instance.pos_data, max, instance.pos_data_obj
+                #     )
+                #     print("perc_pos: ", perc_pos)
+                # if instance.neg_data is not None:
+                #     len_neg = len(instance.neg_data)
+                #     perc_neg = 100 - learner.check_solutions_fast(
+                #         learned_model, instance.cp_vars, instance.neg_data, max, instance.neg_data_obj
+                #     )
+                #     print("perc_neg: ", perc_neg)
+                filewriter.writerow(
+                    [
+                        t,
+                        instance.number,
+                        total_constraints,
+                        len(learned_model.constraints),
+                        learning_time,
+                        time.time() - start_test,
+                        recall,
+                        precision
+                    ]
+                )
+    pickle.dump(pickleVar, open("type_level_models.pickle", "wb"))
+    csvfile.close()
+
+
 if __name__ == "__main__":
     # args = sys.argv[1:]
     # instance_level_generalised(args)
@@ -400,14 +470,17 @@ if __name__ == "__main__":
     # print(results)
 
     # types = [l for l in range(1, 17) if l != 9]
-    types = [1]
-    for t in types:
-        with open(f"type{t:02d}.csv", "w") as csv_file:
-            path = f"instances/type{t:02d}/inst*.json"
-            files = sorted(glob.glob(path))
-            instances = []
-            for file in files:
-                with open(file) as f:
-                    instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
-            learn(instances)
+    types = [int(sys.argv[1])]
+    # print(types)
+    generalized_learning_experiment(types)
+
+    # for t in types:
+    #     with open(f"type{t:02d}.csv", "w") as csv_file:
+    #         path = f"instances/type{t:02d}/inst*.json"
+    #         files = sorted(glob.glob(path))
+    #         instances = []
+    #         for file in files:
+    #             with open(file) as f:
+    #                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
+    #         learn(instances)
 

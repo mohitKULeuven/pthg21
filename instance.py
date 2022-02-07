@@ -28,6 +28,14 @@ class Instance:
         self.problem_type = problem_type
         self.inputData = None
         self.jsonSeq = None
+        self.input_data = json_data.get("inputData", {})
+        self.input_partitions = load_input_partitions(problem_type, self.input_data)
+        self.input_assignments = load_input_assignments(problem_type, self.input_data)
+        self.constants = {k: v for k, v in self.input_data.items() if isinstance(v, (int, float))}
+        if "size" in json_data:
+            self.constants["size"] = json_data["size"]
+
+        self.formatTemplate = json_data["formatTemplate"]
 
         for k, v in json_data["formatTemplate"].items():
             if k != "objective":

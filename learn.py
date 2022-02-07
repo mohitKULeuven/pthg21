@@ -3,23 +3,23 @@ from collections import defaultdict
 from sympy import symbols, lambdify, sympify, Symbol
 
 from instance import Instance
-
+import itertools as it
 import numpy as np
 import enum
 
 
-def unary_operators():
-    def modulo(x):
-        return x % 2
-
-    def power(x):
-        return x * x
-
-    def identity(x):
-        return x
-
-    for f in [identity, abs]:
-        yield f
+# def unary_operators():
+#     def modulo(x):
+#         return x % 2
+#
+#     def power(x):
+#         return x * x
+#
+#     def identity(x):
+#         return x
+#
+#     for f in [identity, abs]:
+#         yield f
 
 
 def generate_unary_exp(x):
@@ -66,16 +66,21 @@ class Partition:
         self.partition_type = partition_type
 
     def generate_partition_indices(self, instance: Instance):
-        for name in instance.tensors_dim:
-            index_pool = {}
-            if self.partition_type != PartitionType.full:
-                for i in range(instance.tensors_dim[name][self.partition_type.value]):
-                    indices = [indices for indices in np.ndindex(*instance.tensors_dim[name])
-                               if indices[self.partition_type.value] == i]
-                    index_pool[name] = indices
-            else:
-                indices = [indices for indices in np.ndindex(*instance.tensors_dim[name])]
-                index_pool[name] = indices
+        index_pool = []
+        if self.partition_type.value[1] is not None:
+            for i in range(instance.tensors_dim[self.tensor_name][self.partition_type.value[1]]):
+                indices = [
+                    (self.tensor_name,) + indices
+                    for indices in np.ndindex(*instance.tensors_dim[self.tensor_name])
+                    if indices[self.partition_type.value[1]] == i
+                ]
+                index_pool.append(indices)
+        else:
+            indices = [
+                (self.tensor_name,) + indices
+                for indices in np.ndindex(*instance.tensors_dim[self.tensor_name])
+            ]
+            index_pool.append(indices)
 
         return index_pool
 
@@ -118,7 +123,7 @@ def gen_sequences(exp_symbols):
     raise NotImplementedError()  # TODO
 
 
-def filter_partition_bounds(partition_bounds, threshold):
+def filter_partition_bounds(partition_bounds, threshold=1):
     # cv = lambda x: np.std(x, ddof=1) / np.mean(x)
     #
     # for sequence in all_sequences:
@@ -186,12 +191,11 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
         local_bounds = dict()
 
         for indices in instance.all_local_indices(exp_symbols):
-            print("index", indices)
-            vals = f(*[instance.pos_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
+            vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
             # print("values across training data", vals)
             local_bounds[indices] = min(vals), max(vals)
-            print("learned bounds", local_bounds[indices])
-            print()
+            # print("learned bounds", local_bounds[indices])
+            # print()
 
         bounds_over_partitions = dict()
         all_partitions = gen_partitions(instance)
@@ -205,15 +209,16 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
                         # one pair of a specific column
                     ]
                     partition_bounds[sequence].append((
-                        min(lb for lb, _ in partition_sequence_bounds),
-                        max(ub for _, ub in partition_sequence_bounds)
+                        min([lb for lb, _ in partition_sequence_bounds]),
+                        max([ub for _, ub in partition_sequence_bounds])
                     ))
+                    # print(sequence, partition_bounds[sequence])
 
             partition_bounds = filter_partition_bounds(partition_bounds)
 
             bounds_over_partitions[partitions] = {
                 seq:
-                    (min(lb for lb, _ in partition_bounds[seq]), max(ub for _, ub in partition_bounds[seq]))
+                    (min([lb for lb, _ in partition_bounds[seq]]), max([ub for _, ub in partition_bounds[seq]]))
                 for seq in all_sequences
             }
 
@@ -223,17 +228,19 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
 
     bounding_expressions = dict()
 
+    # print([i for i, ins in enumerate(instances) if ins.has_solutions()])
+
     for partitions in all_partitions:
         for sequence in all_sequences:
-            bounds = {
-                (partitions, sequence):
-                    bounds_over_partitions_across_instances[instance.number][partitions][sequence]
-                for instance in instances
-            }
+            bounds = {instance.number:
+                          bounds_over_partitions_across_instances[instance.number][partitions][sequence]
+                      for instance in instances if instance.has_solutions()}
+            # print(bounds)
             bounding_expressions[(partitions, sequence)] = fit_feature_expressions(bounds, candidate_features)
+            print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
 
+    # print(bounding_expressions)
     return bounding_expressions
-    # return dict()
 
 
 def learn(instances):
@@ -315,3 +322,41 @@ def learn(instances):
     #         reduced_constraints=reduced_constraints_count,
     #     ),
     # )
+
+
+from cpmpy import *
+
+
+def create_gen_model(general_bounds, instance: Instance):
+    # cp_vars = instance.cp_vars
+    exp_symbols = symbols("x y")
+
+    def ground_bound(_bound):
+        try:
+            for k, v in instance.constants.items():
+                _bound = _bound.subs(Symbol(k), v)
+            return int(_bound)
+        except AttributeError:
+            return _bound
+
+    m = Model()
+    total_constraints = 0
+    for (expr, partitions, sequences), (lb, ub) in general_bounds.items():
+        # if lb is None and ub is None:
+        #     continue
+        expr = sympify(expr)
+        for partition_indices in partitions.generate_partition_indices(instance):
+            for indices in gen_index_groups(sequences, partition_indices):
+                cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
+                f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
+                cpm_e = f(*cp_vars)
+                if lb is not None:
+                    m += [cpm_e >= ground_bound(lb)]
+                if ub is not None:
+                    m += [cpm_e <= ground_bound(ub)]
+                total_constraints += 2
+
+    if instance.input_assignments:
+        for k, v in instance.input_assignments:
+            m += [instance.cp_vars[k[0]][k[1:]] == v]
+    return m, total_constraints
