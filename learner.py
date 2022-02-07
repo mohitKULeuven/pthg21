@@ -225,6 +225,7 @@ def check_solutions(m, mvars, sols, exp, objectives=None):
     logger.info(f"{sum(sats)} satisfied out of {len(sats)}")
     return sum(sats) * 100.0 / len(sats)
 
+
 def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objective_exp, objective_values):
     if sols is None:
         print("No solutions to check")

@@ -18,15 +18,31 @@ def nested_map(f, tensor):
         return f(tensor)
 
 
+def load_input_partitions(type_number, input_data):
+    if type_number == 1:
+        return {
+            "edges": [
+                [("list", d["nodeA"]), ("list", d["nodeB"])]
+                for d in input_data["list"]
+            ]
+        }
+    return {}
+
+def load_input_assignments(type_number, input_data):
+    if type_number == 5:
+        return [
+            {("array", d["row"], d["column"]): d["value"]} for d in input_data["preassigned"]
+        ]
+
 class Instance:
     def __init__(self, number, json_data, problem_type):
         tensors_lb = {}
         tensors_ub = {}
 
         self.number = number
+        self._cp_vars = None
 
         self.problem_type = problem_type
-        self.inputData = None
         self.jsonSeq = None
         self.input_data = json_data.get("inputData", {})
         self.input_partitions = load_input_partitions(problem_type, self.input_data)
@@ -43,6 +59,13 @@ class Instance:
                 tensors_ub[k] = np.array(nested_map(lambda d: d["high"], v))
 
         self.tensors_dim = {k: v.shape for k, v in tensors_ub.items()}
+        for k, shape in self.tensors_dim.items():
+            for i, v in enumerate(shape):
+                self.constants[f"{k}_dim{i}"] = v
+
+        self.var_lbs = tensors_lb
+        self.var_ubs = tensors_ub
+
         self.var_bounds = {
             k: list(zip(tensors_lb[k].flatten(), tensors_ub[k].flatten()))
             for k in self.tensors_dim
@@ -61,10 +84,10 @@ class Instance:
             self.pos_data_obj = self.neg_data_obj = self.test_obj = None
 
         def import_data(_l):
-            return {
-                _k: np.array([d[_k] for d in _l])
-                for _k in self.tensors_dim
-            }
+            return [
+                {_k: np.array(_e[_k]) for _k in self.tensors_dim}
+                for _e in _l
+            ]
 
         def import_data__flattened(_l):
             return {
@@ -72,11 +95,15 @@ class Instance:
                 for _k in self.tensors_dim
             }
 
-        self.pos_data = self.neg_data = self.test_data = None
+        self.pos_data = self.neg_data = self.test_data = self.training_data = None
 
         if json_data["solutions"]:
             self.pos_data = import_data(json_data["solutions"])
             self.neg_data = import_data(json_data["nonSolutions"])
+            self.training_data = {
+                k: np.array([d[k] for d in self.pos_data])
+                for k in self.tensors_dim
+            }
         self.test_data = import_data(json_data["tests"])
 
         if problem_type == 3:
@@ -90,14 +117,28 @@ class Instance:
             warehouseCost = np.zeros(inputData["nrWarehouses"])
             for v in inputData["warehouseCost"]:
                 warehouseCost[v["warehouse"]] = v["cost"]
-            self.inputData = [warehouseCost, customerCost]
+            # self.inputData = [warehouseCost, customerCost]
 
         if problem_type == 1:
-            inputData = json_data["inputData"]["list"]
+            inputData = self.input_data["list"]
             lst = []
             for d in inputData:
                 lst.append(tuple(sorted(d.values())))
             self.jsonSeq = lst
+
+    @property
+    def cp_vars(self):
+        if self._cp_vars is None:
+            self._cp_vars = dict()
+            for k in self.tensors_dim:
+                indices = np.array(["-".join(map(str, i)) for i in np.ndindex(*self.tensors_dim[k])])
+                index_iterable = np.reshape(np.array(indices), self.tensors_dim[k])
+                self._cp_vars[k] = cpmpy.cpm_array(
+                    np.vectorize(lambda _i, _lb, _ub: cpmpy.intvar(
+                        _lb, _ub, name=f"{k}-{_i}"
+                    ))(index_iterable, self.var_lbs[k], self.var_ubs[k])
+                )
+        return self._cp_vars
 
     def has_solutions(self):
         return self.pos_data is not None

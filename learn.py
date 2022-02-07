@@ -1,5 +1,6 @@
 from collections import defaultdict
 
+import sympy
 from sympy import symbols, lambdify, sympify, Symbol
 
 from instance import Instance
@@ -24,22 +25,12 @@ import enum
 
 def generate_unary_exp(x):
     yield x
-    # for u in unary_operators():
-    #     yield u(x)
-
-
-def binary_operators(x, y):
-    # for u in unary_operators():
-    yield x + y
-    yield x - y
-    yield y - x
+    # yield abs(x) for negative data
 
 
 def generate_binary_expr(x, y):
     yield x + y
     yield x - y
-    yield y - x
-    yield abs(y - x)
     yield abs(x - y)
 
 
@@ -57,12 +48,19 @@ def generate_binary_expr(x, y):
 # same for expr in binary_grammar:
 
 class PartitionType(enum.Enum):
-    row = 0
-    column = 1
-    full = 2
+    row = "row", 0
+    column = "column", 1
+    full = "full", None
+
 
 class Partition:
-    def __init__(self, partition_type):
+    def generate_partition_indices(self, instance: Instance):
+        raise NotImplementedError()
+
+
+class GenericPartition(Partition):
+    def __init__(self, tensor_name, partition_type):
+        self.tensor_name = tensor_name
         self.partition_type = partition_type
 
     def generate_partition_indices(self, instance: Instance):
@@ -84,43 +82,72 @@ class Partition:
 
         return index_pool
 
+    def __repr__(self):
+        return f"Partition({self.tensor_name}, {self.partition_type.value[0]})"
 
-def gen_partitions(instance):
-    partition_indices = defaultdict()
-    for partition_type in [PartitionType.row, PartitionType.column, PartitionType.full]:
-        partition = Partition(partition_type)
-        partition_indices[partition_type] = partition.generate_partition_indices(instance)
-    return partition_indices
 
-class Sequence:
-    def __init__(self, sequence_type):
-        self.sequence_type = sequence_type
+class InputPartition(Partition):
+    def __init__(self, input_key):
+        self.input_key = input_key
 
-    def generate_unary_sequence_indices(self, partition_indices):
-        def even():
-            lst = []
-            for i in range(0,len(partition_indices),2):
-                lst.append(partition_indices[i])
-            return lst
+    def generate_partition_indices(self, instance: Instance):
+        return instance.input_partitions[self.input_key]
 
-        def odd():
-            lst = []
-            for i in range(1,len(partition_indices),2):
-                lst.append(partition_indices[i])
-            return lst
+    def __repr__(self):
+        return f"InputPartition({self.input_key})"
 
-        def series():
-            return partition_indices
 
-        index_pool = {}
-        index_pool["evenUn"] = even()
-        index_pool["oddUn"] = odd()
-        index_pool["seriesUn"] = series()
-        return index_pool
+
+def gen_partitions(type_shape: dict[str, int], input_keys: list[str]) -> list[Partition]:
+    """
+    Generates partitions for a given shape
+    :param type_shape: Maps tensor names to the number of dimensions they have
+    :param input_keys: The keys of (custom) input partitions provided to the learning algorithms
+    :return:  A list of partitions
+    """
+    partitions = []
+    for name, n_dims in type_shape.items():
+        partitions.append(GenericPartition(name, PartitionType.full))
+        if n_dims == 2:
+            partitions.append(GenericPartition(name, PartitionType.row))
+            partitions.append(GenericPartition(name, PartitionType.column))
+        elif n_dims > 2:
+            raise NotImplementedError()
+    for key in input_keys:
+        partitions.append(InputPartition(key))
+    return partitions
+
+
+class Sequence(enum.Enum):
+    ALL_UNARY = "all_unary", 1
+    EVEN_UNARY = "even_unary", 1
+    ODD_UNARY = "odd_unary", 1
+
+    ALL_PAIRS = "all_pairs", 2
+    SEQUENCE_PAIRS = "sequence_pairs", 2
+
 
 def gen_sequences(exp_symbols):
-    # Sequence objects
-    raise NotImplementedError()  # TODO
+    return [
+        s
+        for s in Sequence
+        if (s.value[1] == len(exp_symbols)) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY)
+    ]
+
+
+def gen_index_groups(sequence, partition_indices):
+    # print(partition_indices)
+    if sequence == Sequence.ALL_UNARY:
+        return [(i,) for i in partition_indices]
+    if sequence == Sequence.EVEN_UNARY:
+        return [(partition_indices[i],) for i in range(0, len(partition_indices), 2)]
+    if sequence == Sequence.ODD_UNARY:
+        return [(partition_indices[i],) for i in range(1, len(partition_indices), 2)]
+
+    if sequence == Sequence.ALL_PAIRS:
+        return list(it.combinations(partition_indices, r=2))
+    if sequence == Sequence.SEQUENCE_PAIRS:
+        return [(partition_indices[i], partition_indices[i + 1]) for i in range(len(partition_indices) - 1)]
 
 
 def filter_partition_bounds(partition_bounds, threshold=1):
@@ -137,36 +164,58 @@ def filter_partition_bounds(partition_bounds, threshold=1):
 
 
 def compute_shape(instances: list[Instance]):
-    raise NotImplementedError()  # TODO
+    return {key: len(shape) for key, shape in instances[0].tensors_dim.items()}
 
 
-def compute_candidate_features(instances: list[Instance]):
-    raise NotImplementedError()  # TODO
+def compute_input_keys(instances: list[Instance]):
+    return [key for key in instances[0].input_partitions]
 
 
 FeatureName = str
 InstanceNumber = Value = int
 
 
-def fit_feature_expressions(bounds: dict[InstanceNumber, tuple],
-                            candidate_features: dict[FeatureName, dict[InstanceNumber, Value]]):
-    min_error_lb, min_error_ub = float('inf'), float('inf')
-    for f in candidate_features:
-        bias_lb = min(bounds[instance_number][1] - candidate_features[f][instance_number]
-                      for instance_number in bounds)
-        error = sum(
-            bounds[instance_number][1] - candidate_features[f][instance_number] - bias_lb for instance_number in bounds)
-        if error < min_error_lb:
-            min_error_lb = error
-            lb = bias_lb + candidate_features[f]
+def compute_candidate_features(instances: list[Instance]) -> dict[FeatureName, dict[InstanceNumber, Value]]:
+    return {k: {instance.number: instance.constants[k] for instance in instances} for k in instances[0].constants}
 
-        bias_ub = max(bounds[instance_number][1] - candidate_features[f][instance_number]
-                      for instance_number in bounds)
-        error = sum(
-            candidate_features[f][instance_number] + bias_ub - bounds[instance_number][1] for instance_number in bounds)
-        if error < min_error_ub:
+
+def fit_feature_expressions(
+        bounds: dict[InstanceNumber, tuple],
+        candidate_features: dict[FeatureName, dict[InstanceNumber, Value]],
+        threshold=1
+):
+    # print(bounds, candidate_features)
+    # print(bounds)
+    lb = min([bounds[instance_number][0] for instance_number in bounds])
+    ub = max([bounds[instance_number][1] for instance_number in bounds])
+    min_error_lb = [bounds[instance_number][0] - lb for instance_number in bounds]
+    min_error_ub = [ub - bounds[instance_number][1] for instance_number in bounds]
+
+    for f, values in candidate_features.items():
+        bias_lb = min(
+            [bounds[instance_number][0] - values[instance_number]
+             for instance_number in bounds]
+        )
+        error = [bounds[instance_number][0] - values[instance_number] - bias_lb for instance_number in bounds]
+        if sum(error) < sum(min_error_lb):
+            min_error_lb = error
+            lb = bias_lb + sympy.S(f)
+
+        bias_ub = max(
+            [bounds[instance_number][1] - values[instance_number]
+             for instance_number in bounds]
+        )
+        error = [values[instance_number] + bias_ub - bounds[instance_number][1] for instance_number in bounds]
+        if sum(error) < sum(min_error_ub):
             min_error_ub = error
-            ub = bias_ub + candidate_features[f]
+            ub = bias_ub + sympy.S(f)
+
+    cv = lambda x: sum(x) / len(x)
+    if cv(min_error_lb) > threshold:
+        lb = None
+    if cv(min_error_ub) > threshold:
+        ub = None
+    # print(min_error_lb, min_error_ub)
     return lb, ub
 
 
@@ -174,19 +223,18 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
     name = str(expression)
     f = lambdify(exp_symbols, expression, "math")
     bounds_over_partitions_across_instances = dict()
-    # shape = compute_shape(instances)
-    # candidate_features = compute_candidate_features(instances)
+    type_shape = compute_shape(instances)
+    input_keys = compute_input_keys(instances)
+    candidate_features = compute_candidate_features(instances)
     #
-    # all_partitions = gen_partitions(shape)
-    # all_sequences = gen_sequences(exp_symbols)
+    all_partitions = gen_partitions(type_shape, input_keys)
+    all_sequences = gen_sequences(exp_symbols)
 
     print("expression", expression)
 
     for instance in instances:
         if not instance.has_solutions():
             continue
-
-        print("instance", instance.number, "expression", expression)
 
         local_bounds = dict()
 
@@ -198,16 +246,28 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
             # print()
 
         bounds_over_partitions = dict()
-        all_partitions = gen_partitions(instance)
-        for partitions in all_partitions:  # columns of a matrix, rows of a matrix, all values of a list
+
+        # columns of a matrix, rows of a matrix, all values of a list
+        for partitions in all_partitions:
             partition_bounds = defaultdict(list)
-            for partition in all_partitions[partitions]:  # all indices in a specific column
+
+            # all indices in a specific column
+            for partition_indices in partitions.generate_partition_indices(instance):
+                # print(partitions, partition_indices)
+
                 for sequence in all_sequences:  # all-pairs, sequential values
+                    # print(sequence)
+
+                    # for index_group in gen_index_groups(sequence, partition_indices):
+                    # print("\t", index_group)
+
                     partition_sequence_bounds = [
                         local_bounds[index_group]
-                        for index_group in sequence.generate_sequences(partition)  # TODO
+                        for index_group in gen_index_groups(sequence, partition_indices)
                         # one pair of a specific column
                     ]
+
+                    # print(partition_sequence_bounds)
                     partition_bounds[sequence].append((
                         min([lb for lb, _ in partition_sequence_bounds]),
                         max([ub for _, ub in partition_sequence_bounds])
@@ -221,6 +281,8 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
                     (min([lb for lb, _ in partition_bounds[seq]]), max([ub for _, ub in partition_bounds[seq]]))
                 for seq in all_sequences
             }
+
+            # print(expression, partitions, bounds_over_partitions[partitions])
 
         bounds_over_partitions_across_instances[instance.number] = bounds_over_partitions
 

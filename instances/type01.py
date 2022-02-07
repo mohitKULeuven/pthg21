@@ -14,24 +14,21 @@ from instance import Instance
     - inputData: dict as in challenge, containing:
         "list": list of dicts with 'nodeA', 'nodeB'
 """
-def model_type01(formatTemplate, inputData, **kwargs):
 
+
+def model_type01(instance: Instance):
     m = Model()
 
-    # prep vars
-    ivars = []
-    vname = "list"
-    for i,vdict in enumerate(formatTemplate[vname]):
-       ivars.append( intvar(vdict['low'], vdict['high'], name=f"{vname}{i}") )  
-    ivars = cpm_array(ivars)
+    list_vars = instance.cp_vars["list"]
 
     # arcs diff color
-    for pdict in inputData["list"]:
-        m += (ivars[pdict['nodeA']] != ivars[pdict['nodeB']])
+    for pdict in instance.input_data["list"]:
+        m += (list_vars[pdict['nodeA']] != list_vars[pdict['nodeB']])
 
-    m.maximize(max(ivars))
+    # m.maximize(max(list_vars))
 
-    return ({vname:ivars},m)
+    return m
+
 
 if __name__ == "__main__":
     i = 1
