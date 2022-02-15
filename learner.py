@@ -230,16 +230,21 @@ def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objecti
     if sols is None:
         print("No solutions to check")
         return 100
+    correct_objective = sols
+    if objective_values is not None:
+        correct_objective = []
+        for i,sol in enumerate(sols):
+            if objective_exp(sol) == objective_values[i]:
+                correct_objective.append(sol)
 
-    print("Alternative method, positives")
+    print(len(sols), len(correct_objective))
     s = SolverLookup.get("ortools", m)
-    # print()
     s += Table(
         np.hstack([cp_vars[k].flatten() for k in cp_vars]),
-        [np.hstack([sol[k].flatten() for k in cp_vars]) for sol in sols],
+        correct_objective
     )
     cnt = solveAll(s)
-    print(cnt, "of", len(sols))
+    logger.info(f"{cnt} satisfied out of {len(sols)}")
     return cnt * 100.0 / len(sols)
 
 def solutions_sample(model:Model, instance:Instance, size=1000):
@@ -260,20 +265,36 @@ def solutions_sample(model:Model, instance:Instance, size=1000):
             sols.append(sol)
     return sols
 
-def solutions(model:Model, instance:Instance, size=None):
-    sols = []
+def solutions(model:Model, instance:Instance, size=100):
+    s = SolverLookup.get("ortools", model)
+
+    # model = Model([c for c in model.constraints])
+    # model = CPM_ortools(model)
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
-    while model.solve():
-        # print([var.value() for var in vars])
+    s += sum(vars) >= 0
+    vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
+    vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
+
+    sols = []
+    sol_count = 0
+    while s.solve() and sol_count < size:
         sols.append([var.value() for var in vars])
-        model += ~all([var == var.value() for var in vars])
+        s += ~all([var == var.value() for var in vars])
+        initial_point = []
+        for i, v in enumerate(vars):
+            initial_point.append(np.random.randint(vars_lb[i], vars_ub[i]))
+        s.solution_hint(vars, initial_point)
+        sol_count += 1
+        print(sol_count)
     return sols
 
 def statistic(model1, model2, instance: Instance, size=100):
-    sols = solutions_sample(model1, instance, size)
+    sols = solutions(model1, instance, 5)
+    # print(len(sols), type(sols), type(sols[0]), type(sols[0][0]))
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     s = SolverLookup.get("ortools", model2)
     s += Table(vars, sols)
+    print(vars)
     cnt = solveAll(s)
     print(f"Number of solutions: {len(sols)}")
     return cnt * 100 / len(sols)
