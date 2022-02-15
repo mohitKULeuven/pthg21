@@ -230,7 +230,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
     all_partitions = gen_partitions(type_shape, input_keys)
     all_sequences = gen_sequences(exp_symbols)
 
-    print("expression", expression)
+    # print("expression", expression)
 
     for instance in instances:
         if not instance.has_solutions():
@@ -299,7 +299,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
                       for instance in instances if instance.has_solutions()}
             # print(bounds)
             bounding_expressions[(partitions, sequence)] = fit_feature_expressions(bounds, candidate_features)
-            print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
+            # print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
 
     # print(bounding_expressions)
     return bounding_expressions
@@ -419,6 +419,6 @@ def create_gen_model(general_bounds, instance: Instance):
                 total_constraints += 2
 
     if instance.input_assignments:
-        for k, v in instance.input_assignments:
+        for k, v in instance.input_assignments.items():
             m += [instance.cp_vars[k[0]][k[1:]] == v]
     return m, total_constraints

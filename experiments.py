@@ -406,6 +406,8 @@ def generalized_learning_experiment(t):
                 "learned_constraints",
                 "learning_time",
                 "testing_time",
+                "num_pos"
+                "num_neg",
                 "perc_pos",
                 "perc_neg"
             ]
@@ -431,14 +433,20 @@ def generalized_learning_experiment(t):
             # precision = cc*100/lc
             # print(recall, precision)
             perc_pos, perc_neg = None, None
+            sols, non_sols = [], []
             if instance.pos_data is not None:
-                sols = [list(d[k]) for d in instance.pos_data for k in instance.tensors_dim]
+                sols = [np.hstack([list(d[k].flatten()) for k in instance.tensors_dim]) for d in instance.pos_data]
+                # print("len ", len(sols), len(instance.pos_data_obj))
+                # sols = [list(d[k].flatten()) for d in instance.pos_data for k in instance.tensors_dim]
+                # print(sols[0])
+                # sols = [list(d[k]) for d in instance.pos_data for k in instance.tensors_dim]
                 perc_pos = learner.check_solutions_fast(
                     learned_model, instance.cp_vars, sols, max, instance.pos_data_obj
                 )
                 print("perc_pos: ", perc_pos)
             if instance.neg_data is not None:
-                non_sols = [list(d[k]) for d in instance.neg_data for k in instance.tensors_dim]
+                non_sols = [np.hstack([list(d[k].flatten()) for k in instance.tensors_dim]) for d in instance.neg_data]
+                # non_sols = [list(d[k].flatten()) for d in instance.neg_data for k in instance.tensors_dim]
                 perc_neg = 100 - learner.check_solutions_fast(
                     learned_model, instance.cp_vars, non_sols, max, instance.neg_data_obj
                 )
@@ -451,6 +459,8 @@ def generalized_learning_experiment(t):
                     len(learned_model.constraints),
                     learning_time,
                     time.time() - start_test,
+                    len(sols),
+                    len(non_sols),
                     perc_pos,
                     perc_neg,
                     # recall,
@@ -473,9 +483,9 @@ if __name__ == "__main__":
     # results = pool.map(instance_level, t)
     # print(results)
 
-    types = [l for l in range(1, 17) if l != 9]
-    # types = [int(sys.argv[1])]
-    pool = Pool(processes=len(types))
+    # types = [l for l in range(1, 17) if l != 9]
+    types = [int(sys.argv[1])]
+    pool = Pool(processes=1)
     pool.map(generalized_learning_experiment, types)
     # print(types)
     # generalized_learning_experiment(types)

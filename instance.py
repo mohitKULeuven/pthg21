@@ -30,9 +30,7 @@ def load_input_partitions(type_number, input_data):
 
 def load_input_assignments(type_number, input_data):
     if type_number == 5:
-        return [
-            {("array", d["row"], d["column"]): d["value"]} for d in input_data["preassigned"]
-        ]
+        return {("array", d["row"], d["column"]): d["value"] for d in input_data["preassigned"]}
 
 class Instance:
     def __init__(self, number, json_data, problem_type):

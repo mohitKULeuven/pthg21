@@ -233,7 +233,7 @@ def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objecti
     correct_objective = sols
     if objective_values is not None:
         correct_objective = []
-        for i,sol in enumerate(sols):
+        for i, sol in enumerate(sols):
             if objective_exp(sol) == objective_values[i]:
                 correct_objective.append(sol)
 
