@@ -1,11 +1,8 @@
 import glob
+import json
 
 import numpy as np
 from cpmpy import *
-import json
-import sys
-import os
-import time
 import learner
 from learn import learn, create_gen_model
 from instance import Instance
@@ -21,24 +18,21 @@ from instance import Instance
 """
 
 
-def model_type01(instance: Instance):
-    m = Model()
+def model_type02(instance: Instance):
+    queens = instance.cp_vars['list']
+    N = len(queens)
 
-    list_vars = instance.cp_vars["list"]
-
-    # arcs diff color
-    for pdict in instance.input_data["list"]:
-        m += (list_vars[pdict['nodeA']] != list_vars[pdict['nodeB']])
-
-    # m.maximize(max(list_vars))
-
-    return m
-
+    model = Model(
+        AllDifferent(queens),
+        AllDifferent([queens[i] + i for i in range(N)]),
+        AllDifferent([queens[i] - i for i in range(N)])
+    )
+    return model
 
 if __name__ == "__main__":
     print("Learned model")
     # from experiments.py
-    t = 1
+    t = 2
     path = f"type{t:02d}/inst*.json"
     files = sorted(glob.glob(path))
     instances = []
@@ -51,12 +45,12 @@ if __name__ == "__main__":
         print(k, v)
 
 
-    print("Ground-truth model (Graph coloring)")
+    print("Ground-truth model (n-queens)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
     print("data:", inst.input_data)
     print("constants:", inst.constants)
-    m = model_type01(inst)
+    m = model_type02(inst)
     print(m)
 
 
@@ -74,3 +68,4 @@ if __name__ == "__main__":
             m, inst.cp_vars, non_sols, max, inst.neg_data_obj
         )
         print("perc_neg: ", perc_neg)
+
