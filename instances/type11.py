@@ -17,26 +17,24 @@ from instance import Instance
         "list": list of dicts with 'nodeA', 'nodeB'
 """
 
-# Magic Square --- CSPLib prob019
 
-# A Magic Square of order N is an N x N matrix of values from 1 to N^2, where
-# each run, column, and diagonal sum to the same value. This value can be
-# calculated as N * (N^2 + 1) / 2.
-def model_type10(instance: Instance):
-    square = instance.cp_vars['list']
+def model_type11(instance: Instance):
+    square1 = instance.cp_vars['square1']
+    square2 = instance.cp_vars['square2']
     N = instance.constants['size']
 
-    sum_val = int(N * (N * N + 1) / 2)  # This is what all the columns, rows and diagonals must add up to
+    # latin square has rows/cols permutations (alldifferent)
+    def latin_sq(square):
+        return [[AllDifferent(row) for row in square],
+                [AllDifferent(col) for col in square.T]]
 
-    model = Model(
-        AllDifferent(square),
+    model = Model()
+    # each is a latin square
+    model += latin_sq(square1)
+    model += latin_sq(square2)
 
-        [sum(row) == sum_val for row in square],
-        [sum(col) == sum_val for col in square.T],
-
-        sum([square[a, a] for a in range(N)]) == sum_val,  # diagonal TL - BR
-        sum([square[a, N - a - 1] for a in range(N)]) == sum_val  # diagonal TR - BL
-    )
+    # orthogonal (all pairs distinct)
+    model += AllDifferent([square1[i,j]*N + square2[i,j] for i in range(N) for j in range(N)])
 
     return model
 
@@ -44,7 +42,7 @@ def model_type10(instance: Instance):
 if __name__ == "__main__":
     print("Learned model")
     # from experiments.py
-    t = 10
+    t = 11
     path = f"type{t:02d}/inst*.json"
     files = sorted(glob.glob(path))
     instances = []
@@ -57,15 +55,15 @@ if __name__ == "__main__":
         print(k, v)
 
 
-    print("Ground-truth model (magic squares)")
+    print("Ground-truth model (Orth Latin Sq)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
     print("data:", inst.input_data)
     print("constants:", inst.constants)
-    m = model_type10(inst)
+    m = model_type11(inst)
     print(m)
 
     # sanity check ground truth
     for i,inst in enumerate(instances):
         if inst.has_solutions():
-            print(i, inst.check(model_type10(inst)))
+            print(i, inst.check(model_type11(inst)))
