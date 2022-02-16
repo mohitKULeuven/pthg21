@@ -28,9 +28,11 @@ def load_input_partitions(type_number, input_data):
         }
     return {}
 
+
 def load_input_assignments(type_number, input_data):
     if type_number == 5:
         return {("array", d["row"], d["column"]): d["value"] for d in input_data["preassigned"]}
+
 
 class Instance:
     def __init__(self, number, json_data, problem_type):
@@ -181,15 +183,17 @@ class Instance:
             tmp = np.zeros([len(data["warehouses"]), len(data["customers"])])
             for i, c in enumerate(data["customers"]):
                 tmp[c][i] = 1
-            print(self.input_data)
-            sum += np.sum(np.multiply(self.input_data[0], data["warehouses"]))
-            sum += np.sum(np.multiply(self.input_data[1], tmp))
+            # print(self.input_data, data["customers"], data["warehouses"])
+            warehouseCost = [d['cost'] for d in self.input_data['warehouseCost']]
+            customerCost = np.reshape([d['cost'] for d in self.input_data['customerCost']], tmp.shape)
+            sum += np.sum(np.multiply(warehouseCost, data["warehouses"]))
+            sum += np.sum(np.multiply(customerCost, tmp))
             return sum
         return max(data)
 
     def check(self, model):
         model_vars = np.hstack([self.cp_vars[k].flatten() for k in self.cp_vars])
-        percentage_pos = learner.check_solutions(
+        percentage_pos = learner.check_solutions_fast(
             model,
             cpmpy.cpm_array(model_vars),
             self.flatten_data(self.pos_data),
@@ -197,36 +201,7 @@ class Instance:
             self.pos_data_obj,
         )
 
-        percentage_neg = 100 - learner.check_solutions(
-            model,
-            cpmpy.cpm_array(model_vars),
-            self.flatten_data(self.neg_data),
-            self.objective_function,
-            self.neg_data_obj,
-        )
-
-        return percentage_pos, percentage_neg
-
-
-    def check(self, model):
-        model_vars = np.hstack([self.cp_vars[k].flatten() for k in self.cp_vars])
-        percentage_pos = learner.check_solutions(
-            model,
-            cpmpy.cpm_array(model_vars),
-            self.flatten_data(self.pos_data),
-            self.objective_function,
-            self.pos_data_obj,
-        )
-        percentage_pos_fast = learner.check_solutions_fast(
-            model,
-            cpmpy.cpm_array(model_vars),
-            self.flatten_data(self.pos_data),
-            self.objective_function,
-            self.pos_data_obj,
-        )
-        print(f"slow_pos_perc: {int(percentage_pos)}%  |  fast_pos_perc:  {int(percentage_pos_fast)}%")
-
-        percentage_neg = 100 - learner.check_solutions(
+        percentage_neg = 100 - learner.check_solutions_fast(
             model,
             cpmpy.cpm_array(model_vars),
             self.flatten_data(self.neg_data),

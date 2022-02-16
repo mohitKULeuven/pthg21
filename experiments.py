@@ -58,7 +58,7 @@ def generalized_learning_experiment(t):
         learning_time = time.time() - start
         pickleVar = bounding_expressions
 
-        for instance in instances[:1]:
+        for instance in instances:
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_gen_model(bounding_expressions, instance)
