@@ -17,26 +17,36 @@ from instance import Instance
         "list": list of dicts with 'nodeA', 'nodeB'
 """
 
-def model_type04(instance: Instance):
-    marks = instance.cp_vars['list']
-    l = len(marks)
 
-    model = Model()
 
-    model += marks[0] == 0  # symm breaking
-    model += [marks[i] < marks[i+1] for i in range(l-1)]
+def model_type05(instance: Instance):
+    puzzle = instance.cp_vars['array']
+    s = instance.input_data['size']
+    n = s*s
 
-    diffs = [marks[i] - marks[j] for i in range(l) for j in range(i+1,l)]
-    model += AllDifferent(diffs)
+    model = Model(
+        # Constraints on rows and columns
+        [AllDifferent(row) for row in puzzle],
+        [AllDifferent(col) for col in puzzle.T],  # numpy's Transpose
+    )
 
-    #model.minimize(max(marks)) # or marks[l-1], as you wish
+    # Constraints on blocks
+    for i in range(0, n, s):
+        for j in range(0, n, s):
+            model += AllDifferent(puzzle[i:i + 3, j:j + 3])  # python's indexing
+
+    # Constraints on values (cells that are not empty)
+    given = np.zeros((n,n), dtype=int)
+    for d in instance.input_data['preassigned']:  # [{'column': int, 'row': int, 'value': int}]
+        given[d['row'], d['column']] = d['value']
+    model += (puzzle[given != 0] == given[given != 0])  # numpy's indexing
 
     return model
 
 if __name__ == "__main__":
     print("Learned model")
     # from experiments.py
-    t = 4
+    t = 5
     path = f"type{t:02d}/inst*.json"
     files = sorted(glob.glob(path))
     instances = []
@@ -49,12 +59,12 @@ if __name__ == "__main__":
         print(k, v)
 
 
-    print("Ground-truth model (Golomb ruler)")
+    print("Ground-truth model (sudoku pre-assgn)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
     print("data:", inst.input_data)
     print("constants:", inst.constants)
-    m = model_type04(inst)
+    m = model_type05(inst)
     print(m)
 
     # sanity check ground truth
