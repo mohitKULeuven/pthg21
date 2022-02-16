@@ -18,21 +18,27 @@ from instance import Instance
 """
 
 
-def model_type02(instance: Instance):
-    queens = instance.cp_vars['list']
-    N = len(queens)
+def model_type04(instance: Instance):
+    marks = instance.cp_vars['list']
+    l = len(marks)
 
-    model = Model(
-        AllDifferent(queens),
-        AllDifferent([queens[i] + i for i in range(N)]),
-        AllDifferent([queens[i] - i for i in range(N)])
-    )
+    model = Model()
+
+    model += marks[0] == 0  # symm breaking
+    model += [marks[i] < marks[i + 1] for i in range(l - 1)]
+
+    diffs = [marks[i] - marks[j] for i in range(l) for j in range(i + 1, l)]
+    model += AllDifferent(diffs)
+
+    # model.minimize(max(marks)) # or marks[l-1], as you wish
+
     return model
+
 
 if __name__ == "__main__":
     print("Learned model")
     # from experiments.py
-    t = 2
+    t = 4
     path = f"type{t:02d}/inst*.json"
     files = sorted(glob.glob(path))
     instances = []
@@ -44,16 +50,15 @@ if __name__ == "__main__":
     for k, v in bounding_expressions.items():
         print(k, v)
 
-
-    print("Ground-truth model (n-queens)")
+    print("Ground-truth model (Golomb ruler)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
     print("data:", inst.input_data)
     print("constants:", inst.constants)
-    m = model_type02(inst)
+    m = model_type04(inst)
     print(m)
 
     # sanity check ground truth
-    for i,inst in enumerate(instances):
+    for i, inst in enumerate(instances):
         if inst.has_solutions():
-            print(i, inst.check(model_type02(inst)))
+            print(i, inst.check(model_type04(inst)))
