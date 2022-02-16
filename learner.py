@@ -231,6 +231,21 @@ def check_solutions_fast(m: Model, m_vars, sols, objective_exp, objective_values
         print("No solutions to check")
         return 100
     correct_objective = sols
+
+    # remove duplicates, if any (happens for type06)
+    for i in reversed(range(len(sols))):  # backward, for del
+        for j in range(i):  # forward up to and without i
+            if np.array_equal(sols[i], sols[j]):
+                # sols are equal, check to drop 'i' (at back)
+                if objective_values is None:
+                    del sols[i]
+                    break
+                elif objective_values[i] == objective_values[j]:
+                    del sols[i]
+                    del objective_values[i]
+                    break
+
+    # filter out based on objective values, if present
     if objective_values is not None:
         correct_objective = []
         for i, sol in enumerate(sols):
