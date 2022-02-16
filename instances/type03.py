@@ -30,14 +30,15 @@ def model_type03(instance: Instance):
     wCosts = np.zeros(instance.input_data['nrWarehouses'], dtype=int)
     for d in instance.input_data['warehouseCost']:  # [{'cost': int, 'warehouse': int}]
         wCosts[d['warehouse']] = d['cost']
-    wCost = sum(wCosts*warehouses)
+    wCost = sum(wCosts * warehouses)
 
     cCosts = np.zeros((instance.input_data['nrWarehouses'], instance.input_data['nrCustomers']), dtype=int)
     for d in instance.input_data['customerCost']:  # [{'cost': int, 'warehouse': int, 'customer': int}]
         cCosts[d['warehouse'], d['customer']] = d['cost']
-    cCost = sum(cCosts[w,c]*(customers[c] == w) for w in range(instance.input_data['nrWarehouses']) for c in range(instance.input_data['nrCustomers']))
+    cCost = sum(cCosts[w, c] * (customers[c] == w) for w in range(instance.input_data['nrWarehouses']) for c in
+                range(instance.input_data['nrCustomers']))
 
-    #model.minimize(wCost + cCost)
+    # model.minimize(wCost + cCost)
     return model
 
 
@@ -56,7 +57,6 @@ if __name__ == "__main__":
     for k, v in bounding_expressions.items():
         print(k, v)
 
-
     print("Ground-truth model (warehouse location)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
@@ -66,9 +66,10 @@ if __name__ == "__main__":
     print(m)
     # tst
     print(m.solve())
-    for k,v in inst.cp_vars.items():
+    for k, v in inst.cp_vars.items():
         print(k, v.value())
 
     # sanity check ground truth
-    print("pos/neg accuracy", inst.check(m))
-
+    for i, inst in enumerate(instances):
+        if inst.has_solutions():
+            print(i, inst.check(model_type03(inst)))

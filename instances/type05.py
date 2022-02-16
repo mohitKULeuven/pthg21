@@ -68,5 +68,7 @@ if __name__ == "__main__":
     print(m)
 
     # sanity check ground truth
-    print("pos/neg accuracy", inst.check(m))
+    for i,inst in enumerate(instances):
+        if inst.has_solutions():
+            print(i, inst.check(model_type05(inst)))
 
