@@ -1,11 +1,8 @@
 import glob
+import json
 
 import numpy as np
 from cpmpy import *
-import json
-import sys
-import os
-import time
 import learner
 from learn import learn, create_gen_model
 from instance import Instance
@@ -21,24 +18,33 @@ from instance import Instance
 """
 
 
-def model_type01(instance: Instance):
-    m = Model()
+def model_type03(instance: Instance):
+    warehouses = instance.cp_vars['warehouses']
+    customers = instance.cp_vars['customers']
 
-    list_vars = instance.cp_vars["list"]
+    model = Model(
+        # warehouse=1 iff used
+        [(sum(customers == i) > 0) == (warehouses[i] == 1) for i in range(instance.input_data['nrWarehouses'])]
+    )
 
-    # arcs diff color
-    for pdict in instance.input_data["list"]:
-        m += (list_vars[pdict['nodeA']] != list_vars[pdict['nodeB']])
+    wCosts = np.zeros(instance.input_data['nrWarehouses'], dtype=int)
+    for d in instance.input_data['warehouseCost']:  # [{'cost': int, 'warehouse': int}]
+        wCosts[d['warehouse']] = d['cost']
+    wCost = sum(wCosts*warehouses)
 
-    # m.maximize(max(list_vars))
+    cCosts = np.zeros((instance.input_data['nrWarehouses'], instance.input_data['nrCustomers']), dtype=int)
+    for d in instance.input_data['customerCost']:  # [{'cost': int, 'warehouse': int, 'customer': int}]
+        cCosts[d['warehouse'], d['customer']] = d['cost']
+    cCost = sum(cCosts[w,c]*(customers[c] == w) for w in range(instance.input_data['nrWarehouses']) for c in range(instance.input_data['nrCustomers']))
 
-    return m
+    #model.minimize(wCost + cCost)
+    return model
 
 
 if __name__ == "__main__":
     print("Learned model")
     # from experiments.py
-    t = 1
+    t = 3
     path = f"type{t:02d}/inst*.json"
     files = sorted(glob.glob(path))
     instances = []
@@ -51,13 +57,17 @@ if __name__ == "__main__":
         print(k, v)
 
 
-    print("Ground-truth model (Graph coloring)")
+    print("Ground-truth model (warehouse location)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
     print("data:", inst.input_data)
     print("constants:", inst.constants)
-    m = model_type01(inst)
+    m = model_type03(inst)
     print(m)
+    # tst
+    print(m.solve())
+    for k,v in inst.cp_vars.items():
+        print(k, v.value())
 
 
     # sanity check ground truth
@@ -74,3 +84,4 @@ if __name__ == "__main__":
             m, inst.cp_vars, non_sols, max, inst.neg_data_obj
         )
         print("perc_neg: ", perc_neg)
+
