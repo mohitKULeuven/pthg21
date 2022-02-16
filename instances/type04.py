@@ -76,19 +76,6 @@ if __name__ == "__main__":
     m = model_type04(inst)
     print(m)
 
-
     # sanity check ground truth
-    sols, non_sols = [], []
-    if inst.pos_data is not None:
-        sols = [np.hstack([list(d[k].flatten()) for k in inst.tensors_dim]) for d in inst.pos_data]
-        perc_pos = learner.check_solutions_fast(
-            m, inst.cp_vars, sols, max, inst.pos_data_obj
-        )
-        print("perc_pos: ", perc_pos)
-    if inst.neg_data is not None:
-        non_sols = [np.hstack([list(d[k].flatten()) for k in inst.tensors_dim]) for d in inst.neg_data]
-        perc_neg = 100 - learner.check_solutions_fast(
-            m, inst.cp_vars, non_sols, max, inst.neg_data_obj
-        )
-        print("perc_neg: ", perc_neg)
+    print("pos/neg accuracy", inst.check(m))
 
