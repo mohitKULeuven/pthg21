@@ -7,6 +7,7 @@ from instance import Instance
 import itertools as it
 import numpy as np
 import enum
+from cpmpy import *
 
 
 # def unary_operators():
@@ -230,7 +231,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
     all_partitions = gen_partitions(type_shape, input_keys)
     all_sequences = gen_sequences(exp_symbols)
 
-    # print("expression", expression)
+    print("expression", expression)
 
     for instance in instances:
         if not instance.has_solutions():
@@ -298,8 +299,11 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
                           bounds_over_partitions_across_instances[instance.number][partitions][sequence]
                       for instance in instances if instance.has_solutions()}
             # print(bounds)
-            bounding_expressions[(partitions, sequence)] = fit_feature_expressions(bounds, candidate_features)
-            # print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
+            symbolic_bounds = fit_feature_expressions(bounds, candidate_features)
+            if sequence == Sequence.SEQUENCE_PAIRS and bounding_expressions[(partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+                continue
+            bounding_expressions[(partitions, sequence)] = symbolic_bounds
+            print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
 
     # print(bounding_expressions)
     return bounding_expressions
@@ -317,76 +321,6 @@ def learn(instances):
             bounding_expressions[(b,) + key] = val
 
     return bounding_expressions
-
-    # full_model, full_model_vars = cpmpy.Model(), []
-    # full_constraints_count = 0
-    # reduced_constraints_count = 0
-    # filtered_bounds = dict()
-    #
-    # for k in self.tensors_dim:
-    #     pos_data = self.pos_data[k]
-    #     var_bounds = self.var_bounds[k]
-    #
-    #     n_pos_examples = pos_data.shape[0]
-    #     if fraction_training == 1.0:
-    #         training_indices = range(n_pos_examples)
-    #     else:
-    #         training_indices = random.sample(
-    #             range(n_pos_examples), int(n_pos_examples * fraction_training)
-    #         )
-    #
-    #     expr_bounds = learner.constraint_learner(
-    #         pos_data[training_indices, :], pos_data.shape[1]
-    #     )
-    #     mapping = None
-    #     if not propositional:
-    #         expr_bounds = learner.generalise_bounds(
-    #             expr_bounds, pos_data.shape[1], self.jsonSeq
-    #         )
-    #         expr_bounds = learner.filter_trivial(
-    #             var_bounds,
-    #             expr_bounds,
-    #             pos_data.shape[1],
-    #             name=k,
-    #             inputData=self.jsonSeq,
-    #         )
-    #         m, m_vars, mapping = learner.create_gen_model(
-    #             var_bounds, expr_bounds, name=k, inputData=self.jsonSeq
-    #         )
-    #     else:
-    #         m, m_vars = learner.create_model(var_bounds, expr_bounds, name=k)
-    #
-    #     full_constraints_count += len(m.constraints)
-    #
-    #     if filter:
-    #         filtered_bounds[k], constraints = learner.filter_redundant(
-    #             expr_bounds,
-    #             m.constraints,
-    #             mapping
-    #         )
-    #     else:
-    #         filtered_bounds[k], constraints = expr_bounds, m.constraints
-    #
-    #     reduced_model_constraint_count = len(constraints)
-    #     logger.info(
-    #         f"redundancy check [{k}]: {len(m.constraints)} => {reduced_model_constraint_count}"
-    #     )
-    #     reduced_constraints_count += reduced_model_constraint_count
-    #     full_model += constraints
-    #     full_model_vars += m_vars
-    #
-    # return (
-    #     full_model,
-    #     full_model_vars,
-    #     filtered_bounds,
-    #     dict(
-    #         all_constraints=full_constraints_count,
-    #         reduced_constraints=reduced_constraints_count,
-    #     ),
-    # )
-
-
-from cpmpy import *
 
 
 def create_gen_model(general_bounds, instance: Instance):

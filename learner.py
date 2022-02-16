@@ -244,6 +244,7 @@ def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objecti
         correct_objective
     )
     cnt = solveAll(s)
+    print(cnt, len(correct_objective))
     logger.info(f"{cnt} satisfied out of {len(sols)}")
     return cnt * 100.0 / len(sols)
 

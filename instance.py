@@ -142,13 +142,14 @@ class Instance:
         return self.pos_data is not None
 
     def flatten_data(self, data):
-        all_data = None
-        for k in self.tensors_dim:
-            if all_data is None:
-                all_data = data[k]
-            else:
-                all_data = np.hstack([all_data, data[k]])
-        return all_data
+        return [np.hstack([list(d[k].flatten()) for k in self.tensors_dim]) for d in data]
+        # all_data = None
+        # for k in self.tensors_dim:
+        #     if all_data is None:
+        #         all_data = data[k]
+        #     else:
+        #         all_data = np.hstack([all_data, data[k]])
+        # return all_data
 
     def unflatten_data(self, data):
         d = dict()
@@ -173,77 +174,6 @@ class Instance:
             return data[k].shape[0]
         raise RuntimeError("Tensor dimensions are empty")
 
-    def learn_model(self, propositional, filter=True, fraction_training=1.0):
-        if not self.has_solutions():
-            raise AttributeError("Cannot learn from instance without solutions")
-
-        full_model, full_model_vars = cpmpy.Model(), []
-        full_constraints_count = 0
-        reduced_constraints_count = 0
-        filtered_bounds = dict()
-
-        for k in self.tensors_dim:
-            pos_data = self.pos_data[k]
-            var_bounds = self.var_bounds[k]
-
-            n_pos_examples = pos_data.shape[0]
-            if fraction_training == 1.0:
-                training_indices = range(n_pos_examples)
-            else:
-                training_indices = random.sample(
-                    range(n_pos_examples), int(n_pos_examples * fraction_training)
-                )
-
-            expr_bounds = learner.constraint_learner(
-                pos_data[training_indices, :], pos_data.shape[1]
-            )
-            mapping=None
-            if not propositional:
-                expr_bounds = learner.generalise_bounds(
-                    expr_bounds, pos_data.shape[1], self.jsonSeq
-                )
-                expr_bounds = learner.filter_trivial(
-                    var_bounds,
-                    expr_bounds,
-                    pos_data.shape[1],
-                    name=k,
-                    inputData=self.jsonSeq,
-                )
-                m, m_vars, mapping = learner.create_gen_model(
-                    var_bounds, expr_bounds, name=k, inputData=self.jsonSeq
-                )
-            else:
-                m, m_vars = learner.create_model(var_bounds, expr_bounds, name=k)
-
-            full_constraints_count += len(m.constraints)
-
-            if filter:
-                filtered_bounds[k], constraints = learner.filter_redundant(
-                    expr_bounds,
-                    m.constraints,
-                    mapping
-                )
-            else:
-                filtered_bounds[k], constraints = expr_bounds, m.constraints
-
-            reduced_model_constraint_count = len(constraints)
-            logger.info(
-                f"redundancy check [{k}]: {len(m.constraints)} => {reduced_model_constraint_count}"
-            )
-            reduced_constraints_count += reduced_model_constraint_count
-            full_model += constraints
-            full_model_vars += m_vars
-
-        return (
-            full_model,
-            full_model_vars,
-            filtered_bounds,
-            dict(
-                all_constraints=full_constraints_count,
-                reduced_constraints=reduced_constraints_count,
-            ),
-        )
-
     def objective_function(self, data):
         if self.problem_type == 3:
             data = self.unflatten_data(data)
@@ -256,7 +186,8 @@ class Instance:
             return sum
         return max(data)
 
-    def check(self, model, model_vars):
+    def check(self, model):
+        model_vars = np.hstack([self.cp_vars[k].flatten() for k in self.cp_vars])
         percentage_pos = learner.check_solutions(
             model,
             cpmpy.cpm_array(model_vars),
@@ -269,27 +200,9 @@ class Instance:
             model,
             cpmpy.cpm_array(model_vars),
             self.flatten_data(self.neg_data),
-            max,
+            self.objective_function,
             self.neg_data_obj,
         )
 
         return percentage_pos, percentage_neg
 
-    def test(self, model, model_vars):
-        return learner.is_sat(
-            model,
-            cpmpy.cpm_array(model_vars),
-            self.flatten_data(self.test_data),
-            max,
-            self.test_obj,
-        )
-
-    def get_combined_model(self, gen_bounds):
-        full_model, full_model_vars = cpmpy.Model(), []
-        for k in self.tensors_dim:
-            m, m_vars, _ = learner.create_gen_model(
-                self.var_bounds[k], gen_bounds[k], name=k, inputData=self.jsonSeq
-            )
-            full_model += m.constraints
-            full_model_vars += m_vars
-        return full_model, full_model_vars
