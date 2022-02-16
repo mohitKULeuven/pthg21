@@ -19,9 +19,9 @@ from instance import Instance
 
 
 
-def model_type05(instance: Instance):
+def model_type06(instance: Instance):
     puzzle = instance.cp_vars['array']
-    s = instance.input_data['size']
+    s = instance.constants['size']
     n = s*s
 
     model = Model(
@@ -35,18 +35,12 @@ def model_type05(instance: Instance):
         for j in range(0, n, s):
             model += AllDifferent(puzzle[i:i + s, j:j + s])  # python's indexing
 
-    # Constraints on values (cells that are not empty)
-    given = np.zeros((n,n), dtype=int)
-    for d in instance.input_data['preassigned']:  # [{'column': int, 'row': int, 'value': int}]
-        given[d['row'], d['column']] = d['value']
-    model += (puzzle[given != 0] == given[given != 0])  # numpy's indexing
-
     return model
 
 if __name__ == "__main__":
     print("Learned model")
     # from experiments.py
-    t = 5
+    t = 6
     path = f"type{t:02d}/inst*.json"
     files = sorted(glob.glob(path))
     instances = []
@@ -59,16 +53,16 @@ if __name__ == "__main__":
         print(k, v)
 
 
-    print("Ground-truth model (sudoku pre-assgn)")
+    print("Ground-truth model (sudoku many)")
     inst = instances[0]
     print("vars:", inst.cp_vars)
     print("data:", inst.input_data)
     print("constants:", inst.constants)
-    m = model_type05(inst)
+    m = model_type06(inst)
     print(m)
 
     # sanity check ground truth
     for i,inst in enumerate(instances):
         if inst.has_solutions():
-            print(i, inst.check(model_type05(inst)))
+            print(i, inst.check(model_type06(inst)))
 
