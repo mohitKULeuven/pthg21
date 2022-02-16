@@ -181,8 +181,9 @@ class Instance:
             tmp = np.zeros([len(data["warehouses"]), len(data["customers"])])
             for i, c in enumerate(data["customers"]):
                 tmp[c][i] = 1
-            sum += np.sum(np.multiply(self.inputData[0], data["warehouses"]))
-            sum += np.sum(np.multiply(self.inputData[1], tmp))
+            print(self.input_data)
+            sum += np.sum(np.multiply(self.input_data[0], data["warehouses"]))
+            sum += np.sum(np.multiply(self.input_data[1], tmp))
             return sum
         return max(data)
 
@@ -206,3 +207,31 @@ class Instance:
 
         return percentage_pos, percentage_neg
 
+
+    def check(self, model):
+        model_vars = np.hstack([self.cp_vars[k].flatten() for k in self.cp_vars])
+        percentage_pos = learner.check_solutions(
+            model,
+            cpmpy.cpm_array(model_vars),
+            self.flatten_data(self.pos_data),
+            self.objective_function,
+            self.pos_data_obj,
+        )
+        percentage_pos_fast = learner.check_solutions_fast(
+            model,
+            cpmpy.cpm_array(model_vars),
+            self.flatten_data(self.pos_data),
+            self.objective_function,
+            self.pos_data_obj,
+        )
+        print(f"slow_pos_perc: {int(percentage_pos)}%  |  fast_pos_perc:  {int(percentage_pos_fast)}%")
+
+        percentage_neg = 100 - learner.check_solutions(
+            model,
+            cpmpy.cpm_array(model_vars),
+            self.flatten_data(self.neg_data),
+            self.objective_function,
+            self.neg_data_obj,
+        )
+
+        return percentage_pos, percentage_neg

@@ -226,7 +226,7 @@ def check_solutions(m, mvars, sols, exp, objectives=None):
     return sum(sats) * 100.0 / len(sats)
 
 
-def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objective_exp, objective_values):
+def check_solutions_fast(m: Model, m_vars, sols, objective_exp, objective_values):
     if sols is None:
         print("No solutions to check")
         return 100
@@ -237,14 +237,14 @@ def check_solutions_fast(m: Model, cp_vars: dict[str, np.ndarray], sols, objecti
             if objective_exp(sol) == objective_values[i]:
                 correct_objective.append(sol)
 
-    print(len(sols), len(correct_objective))
+    # print(len(sols), len(correct_objective))
     s = SolverLookup.get("ortools", m)
     s += Table(
-        np.hstack([cp_vars[k].flatten() for k in cp_vars]),
+        m_vars,
         correct_objective
     )
     cnt = solveAll(s)
-    print(cnt, len(correct_objective))
+    # print(cnt, len(correct_objective))
     logger.info(f"{cnt} satisfied out of {len(sols)}")
     return cnt * 100.0 / len(sols)
 
