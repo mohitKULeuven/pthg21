@@ -56,7 +56,7 @@ def generate_binary_expr(x, y):
     yield x + y
     yield x - y
     yield y - x
-    yield abs(y-x)
+    yield abs(y - x)
     # yield abs(x-y)
 
     # for b in binary_operators(x, y):
@@ -263,27 +263,28 @@ def check_solutions_fast(m: Model, m_vars, sols, objective_exp, objective_values
     logger.info(f"{cnt} satisfied out of {len(sols)}")
     return cnt * 100.0 / len(sols)
 
-def solutions_sample(model:Model, instance:Instance, size=1000):
-    vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
+
+def solutions_sample(model: Model, instance: Instance, size):
+    m_vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
     vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
     # print(vars, vars_lb, vars_ub)
-    sols=[]
-    while len(sols) < size:
-        sol=[]
+    sols = []
+    start = time.time()
+    while len(sols) < size and time.time() - start < 60:
+        sol = []
         m_copy = Model([c for c in model.constraints])
-        for i,var in enumerate(vars):
+        for i, var in enumerate(m_vars):
             random_val = np.random.randint(vars_lb[i], vars_ub[i])
-            # print(random_val)
             sol.append(random_val)
             m_copy += [var == random_val]
         if m_copy.solve():
             sols.append(sol)
     return sols
 
-def solutions(model:Model, instance:Instance, size=100):
-    s = SolverLookup.get("ortools", model)
 
+def solutions(model: Model, instance: Instance, size):
+    s = SolverLookup.get("ortools", model)
     # model = Model([c for c in model.constraints])
     # model = CPM_ortools(model)
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
@@ -301,27 +302,29 @@ def solutions(model:Model, instance:Instance, size=100):
             initial_point.append(np.random.randint(vars_lb[i], vars_ub[i]))
         s.solution_hint(vars, initial_point)
         sol_count += 1
-        print(sol_count)
     return sols
 
-def statistic(model1, model2, instance: Instance, size=100):
-    sols = solutions(model1, instance, 5)
+
+def statistic(model1, model2, instance: Instance, size=1000):
+    sols = solutions(model1, instance, size)
+    print(f"Number of solutions: {len(sols)}")
     # print(len(sols), type(sols), type(sols[0]), type(sols[0][0]))
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     s = SolverLookup.get("ortools", model2)
     s += Table(vars, sols)
-    print(vars)
     cnt = solveAll(s)
-    print(f"Number of solutions: {len(sols)}")
+    # print(f"Number of solutions: {len(sols)}")
     return cnt * 100 / len(sols)
 
-def compare_models(learned_model:Model, target_model: Model, instance):
+
+def compare_models(learned_model: Model, target_model: Model, instance):
     recall = statistic(target_model, learned_model, instance)
     precision = statistic(learned_model, target_model, instance)
     print(f"Precision: {precision}, Recall: {recall}")
     return precision, recall
 
-def compare_models_count(learned_model:Model, target_model: Model, cp_vars):
+
+def compare_models_count(learned_model: Model, target_model: Model, cp_vars):
     s = CPM_ortools(target_model)
     cb = OrtSolutionCounter()
     s.solve(enumerate_all_solutions=True, solution_callback=cb)
@@ -584,18 +587,19 @@ def filter_trivial(var_bounds, genBounds, size, name, inputData):
                         break
     return genBounds
 
+
 if __name__ == "__main__":
     import os, glob
     import pandas as pd
 
     all_files = glob.glob(os.path.join("results/", "*.json"))
-    final_output={"email":"mohit.kumar@cs.kuleuven.be", "name":"Mohit Kumar"}
-    results=[]
+    final_output = {"email": "mohit.kumar@cs.kuleuven.be", "name": "Mohit Kumar"}
+    results = []
     for f in all_files:
-        tmp=json.load(open(f))
+        tmp = json.load(open(f))
         if tmp["tests"]:
             results.append(tmp)
-    final_output["results"]=results
+    final_output["results"] = results
     with open(f"final_results.json", "w") as f:
         json.dump(final_output, f)
 

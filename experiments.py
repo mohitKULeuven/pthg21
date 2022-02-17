@@ -13,6 +13,14 @@ from instance import Instance
 from learn import learn, create_gen_model
 import sys
 from instances.type01 import model_type01
+from instances.type02 import model_type02
+from instances.type03 import model_type03
+from instances.type04 import model_type04
+from instances.type05 import model_type05
+from instances.type06 import model_type06
+from instances.type07 import model_type07
+from instances.type08 import model_type08
+from instances.type10 import model_type10
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +38,26 @@ def flatten(l):
     flatten_rec(l)
     return result
 
+def true_model(t, instance):
+    if t == 1:
+        return model_type01(instance)
+    elif t == 2:
+        return model_type02(instance)
+    elif t == 3:
+        return model_type03(instance)
+    elif t == 4:
+        return model_type04(instance)
+    elif t == 5:
+        return model_type05(instance)
+    elif t == 6:
+        return model_type06(instance)
+    elif t == 7:
+        return model_type07(instance)
+    elif t == 8:
+        return model_type08(instance)
+    elif t == 10:
+        return model_type10(instance)
+
 
 def generalized_learning_experiment(t):
     print(f"type{t}")
@@ -43,8 +71,10 @@ def generalized_learning_experiment(t):
                 "learned_constraints",
                 "learning_time",
                 "testing_time",
+                "precision",
+                "recall",
                 "perc_pos",
-                "perc_neg"
+                "perc_neg",
             ]
         )
         path = f"instances/type{t:02d}/inst*.json"
@@ -63,28 +93,15 @@ def generalized_learning_experiment(t):
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_gen_model(bounding_expressions, instance)
             start_test = time.time()
-            # precision, recall = learner.compare_models(learned_model, model_type01(instance), instance)
-            # recall = cc*100/tc
-            # precision = cc*100/lc
-            # print(recall, precision)
+
+            precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
+            print(f"precision: {int(precision)}%  |  recall:  {int(recall)}%")
+
             perc_pos, perc_neg = None, None
             if instance.has_solutions():
                 perc_pos, perc_neg = instance.check(learned_model)
                 print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
-            #     sols = [np.hstack([list(d[k].flatten()) for k in instance.tensors_dim]) for d in instance.pos_data]
-            #     pp = learner.check_solutions(learned_model, np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars]),
-            #                                  sols, max, objectives=None)
-            #     print("percentage_positive: ", pp)
-            #     perc_pos = learner.check_solutions_fast(
-            #         learned_model, instance.cp_vars, sols, max, instance.pos_data_obj
-            #     )
-            #     print("perc_pos: ", perc_pos)
-            # if instance.neg_data is not None:
-            #     non_sols = [np.hstack([list(d[k].flatten()) for k in instance.tensors_dim]) for d in instance.neg_data]
-            #     perc_neg = 100 - learner.check_solutions_fast(
-            #         learned_model, instance.cp_vars, non_sols, max, instance.neg_data_obj
-            #     )
-            #     print("perc_neg: ", perc_neg)
+
             filewriter.writerow(
                 [
                     t,
@@ -93,10 +110,10 @@ def generalized_learning_experiment(t):
                     len(learned_model.constraints),
                     learning_time,
                     time.time() - start_test,
+                    precision,
+                    recall,
                     perc_pos,
                     perc_neg,
-                    # recall,
-                    # precision,
                 ]
             )
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))

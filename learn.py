@@ -241,10 +241,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
 
         for indices in instance.all_local_indices(exp_symbols):
             vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
-            # print("values across training data", vals)
             local_bounds[indices] = min(vals), max(vals)
-            # print("learned bounds", local_bounds[indices])
-            # print()
 
         bounds_over_partitions = dict()
 
@@ -254,26 +251,17 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
 
             # all indices in a specific column
             for partition_indices in partitions.generate_partition_indices(instance):
-                # print(partitions, partition_indices)
-
                 for sequence in all_sequences:  # all-pairs, sequential values
-                    # print(sequence)
-
-                    # for index_group in gen_index_groups(sequence, partition_indices):
-                    # print("\t", index_group)
-
                     partition_sequence_bounds = [
                         local_bounds[index_group]
                         for index_group in gen_index_groups(sequence, partition_indices)
                         # one pair of a specific column
                     ]
 
-                    # print(partition_sequence_bounds)
                     partition_bounds[sequence].append((
                         min([lb for lb, _ in partition_sequence_bounds]),
                         max([ub for _, ub in partition_sequence_bounds])
                     ))
-                    # print(sequence, partition_bounds[sequence])
 
             partition_bounds = filter_partition_bounds(partition_bounds)
 
