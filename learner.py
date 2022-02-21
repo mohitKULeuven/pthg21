@@ -261,7 +261,7 @@ def check_solutions_fast(m: Model, m_vars, sols, objective_exp, objective_values
     cnt = solveAll(s)
     # print(cnt, len(correct_objective))
     logger.info(f"{cnt} satisfied out of {len(sols)}")
-    return cnt * 100.0 / len(sols)
+    return cnt * 100.0 / len(sols), cnt, len(correct_objective), len(sols)
 
 
 def solutions_sample(model: Model, instance: Instance, size):

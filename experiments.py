@@ -74,7 +74,7 @@ def propositional_level_experiment(t):
                 "precision",
                 "recall",
                 "perc_pos",
-                "perc_neg",
+                "perc_neg", "total", "correct_objective", "count"
             ]
         )
         path = f"instances/type{t:02d}/inst*.json"
@@ -100,7 +100,7 @@ def propositional_level_experiment(t):
 
             perc_pos, perc_neg = None, None
             if instance.has_solutions():
-                perc_pos, perc_neg = instance.check(learned_model)
+                perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
                 print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
 
             filewriter.writerow(
@@ -114,7 +114,7 @@ def propositional_level_experiment(t):
                     precision,
                     recall,
                     perc_pos,
-                    perc_neg,
+                    perc_neg, total, co, cnt
                 ]
             )
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))
@@ -136,7 +136,7 @@ def generalized_learning_experiment(t):
                 "precision",
                 "recall",
                 "perc_pos",
-                "perc_neg",
+                "perc_neg", "total", "correct_objective", "count"
             ]
         )
         path = f"instances/type{t:02d}/inst*.json"
@@ -161,7 +161,7 @@ def generalized_learning_experiment(t):
 
             perc_pos, perc_neg = None, None
             if instance.has_solutions():
-                perc_pos, perc_neg = instance.check(learned_model)
+                perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
                 print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
 
             filewriter.writerow(
@@ -175,7 +175,7 @@ def generalized_learning_experiment(t):
                     precision,
                     recall,
                     perc_pos,
-                    perc_neg,
+                    perc_neg, total, co, cnt
                 ]
             )
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))

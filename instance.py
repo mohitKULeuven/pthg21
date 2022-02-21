@@ -193,7 +193,7 @@ class Instance:
 
     def check(self, model):
         model_vars = np.hstack([self.cp_vars[k].flatten() for k in self.cp_vars])
-        percentage_pos = learner.check_solutions_fast(
+        percentage_pos, cnt, co, total = learner.check_solutions_fast(
             model,
             cpmpy.cpm_array(model_vars),
             self.flatten_data(self.pos_data),
@@ -201,12 +201,13 @@ class Instance:
             self.pos_data_obj,
         )
 
-        percentage_neg = 100 - learner.check_solutions_fast(
+        percentage_neg, cnt, co, total = learner.check_solutions_fast(
             model,
             cpmpy.cpm_array(model_vars),
             self.flatten_data(self.neg_data),
             self.objective_function,
             self.neg_data_obj,
         )
+        percentage_neg = 100 - percentage_neg
 
-        return percentage_pos, percentage_neg
+        return percentage_pos, percentage_neg, cnt, co, total
