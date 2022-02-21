@@ -46,7 +46,7 @@ def model_type12(instance: Instance):
     l,v,k = (instance.input_data[key] for key in ['lambda','v','k'])
     b = instance.constants['matrix_dim1']
     r = l+k
-    print(b, r)
+    #print(b, r)
 
     model = Model(
         [sum(row) == r for row in matrix],  # every row adds up to r
@@ -57,6 +57,7 @@ def model_type12(instance: Instance):
         # for col_i in range(v) for col_j in range(col_i)],
     )
 
+    raise NotImplementedError("Ground truth model not known")
     return model
 
 
@@ -86,8 +87,8 @@ if __name__ == "__main__":
     print(m)
 
     # wtf does it model
-    for i,inst in enumerate(instances):
-        print(i, "constants:", inst.constants, "sum fst row", sum(inst.pos_data[0]['matrix'][0]))
+    #for i,inst in enumerate(instances):
+    #    print(i, "constants:", inst.constants, "sum fst row", sum(inst.pos_data[0]['matrix'][0]))
 
     # sanity check ground truth
     for i,inst in enumerate(instances):
