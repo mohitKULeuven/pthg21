@@ -10,7 +10,7 @@ import time
 from multiprocessing import Pool
 
 from instance import Instance
-from learn import learn, create_gen_model
+from learn import learn, create_gen_model, learn_propositional, create_propositional_model
 import sys
 from instances.type01 import model_type01
 from instances.type02 import model_type02
@@ -57,6 +57,68 @@ def true_model(t, instance):
         return model_type08(instance)
     elif t == 10:
         return model_type10(instance)
+
+
+
+def propositional_level_experiment(t):
+    with open(f"type_{t:02d}_propositional.csv", "w") as csv_file:
+        filewriter = csv.writer(csv_file, delimiter=",")
+        filewriter.writerow(
+            [
+                "type",
+                "instance",
+                "total_constraints",
+                "learned_constraints",
+                "learning_time",
+                "testing_time",
+                "precision",
+                "recall",
+                "perc_pos",
+                "perc_neg",
+            ]
+        )
+        path = f"instances/type{t:02d}/inst*.json"
+        files = sorted(glob.glob(path))
+        instances = []
+        for file in files:
+            with open(file) as f:
+                instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
+
+        for instance in instances:
+            print(f"instance {instance.number}")
+            if not instance.has_solutions():
+                continue
+            start = time.time()
+            bounding_expressions = learn_propositional(instance)
+            learning_time = time.time() - start
+            pickleVar = bounding_expressions
+            learned_model, total_constraints = create_propositional_model(bounding_expressions, instance)
+
+            start_test = time.time()
+            precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
+            print(f"precision: {int(precision)}%  |  recall:  {int(recall)}%")
+
+            perc_pos, perc_neg = None, None
+            if instance.has_solutions():
+                perc_pos, perc_neg = instance.check(learned_model)
+                print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
+
+            filewriter.writerow(
+                [
+                    t,
+                    instance.number,
+                    total_constraints,
+                    len(learned_model.constraints),
+                    learning_time,
+                    time.time() - start_test,
+                    precision,
+                    recall,
+                    perc_pos,
+                    perc_neg,
+                ]
+            )
+    pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))
+    # csvfile.close()
 
 
 def generalized_learning_experiment(t):
@@ -124,4 +186,5 @@ if __name__ == "__main__":
     # types = [l for l in range(1, 17) if l != 9]
     types = [int(sys.argv[1])]
     pool = Pool(processes=1)
-    pool.map(generalized_learning_experiment, types)
+    pool.map(propositional_level_experiment, types)
+    # pool.map(generalized_learning_experiment, types)

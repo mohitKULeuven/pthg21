@@ -219,6 +219,30 @@ def fit_feature_expressions(
     # print(min_error_lb, min_error_ub)
     return lb, ub
 
+def learn_for_instance(instance: Instance, expression, exp_symbols):
+    f = lambdify(exp_symbols, expression, "math")
+    print("expression", expression)
+    if not instance.has_solutions():
+        return
+    local_bounds = dict()
+    for indices in instance.all_local_indices(exp_symbols):
+        vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
+        local_bounds[indices] = min(vals), max(vals)
+        # print("\t", indices, local_bounds[indices])
+    return local_bounds
+
+def learn_propositional(instance):
+    x, y = symbols("x y")
+    bounding_expressions = dict()
+    for u in generate_unary_exp(x):
+        for key, val in learn_for_instance(instance, u, [x]).items():
+            bounding_expressions[(u,) + (key,)] = val
+
+    for b in generate_binary_expr(x, y):
+        for key, val in learn_for_instance(instance, b, [x, y]).items():
+            bounding_expressions[(b,) + (key,)] = val
+
+    return bounding_expressions
 
 def learn_for_expression(instances: list[Instance], expression, exp_symbols):
     name = str(expression)
@@ -331,6 +355,7 @@ def create_gen_model(general_bounds, instance: Instance):
         expr = sympify(expr)
         for partition_indices in partitions.generate_partition_indices(instance):
             for indices in gen_index_groups(sequences, partition_indices):
+                print(indices)
                 cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
                 f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
                 cpm_e = f(*cp_vars)
@@ -339,6 +364,37 @@ def create_gen_model(general_bounds, instance: Instance):
                 if ub is not None:
                     m += [cpm_e <= ground_bound(ub)]
                 total_constraints += 2
+
+    if instance.input_assignments:
+        for k, v in instance.input_assignments.items():
+            m += [instance.cp_vars[k[0]][k[1:]] == v]
+    return m, total_constraints
+
+
+def create_propositional_model(general_bounds, instance: Instance):
+    exp_symbols = symbols("x y")
+
+    def ground_bound(_bound):
+        try:
+            for k, v in instance.constants.items():
+                _bound = _bound.subs(Symbol(k), v)
+            return int(_bound)
+        except AttributeError:
+            return _bound
+
+    m = Model()
+    total_constraints = 0
+    for (expr, indices), (lb, ub) in general_bounds.items():
+        # print((expr, indices), (lb, ub))
+        expr = sympify(expr)
+        cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
+        f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
+        cpm_e = f(*cp_vars)
+        if lb is not None:
+            m += [cpm_e >= ground_bound(lb)]
+        if ub is not None:
+            m += [cpm_e <= ground_bound(ub)]
+        total_constraints += 2
 
     if instance.input_assignments:
         for k, v in instance.input_assignments.items():
