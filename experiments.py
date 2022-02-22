@@ -21,6 +21,12 @@ from instances.type06 import model_type06
 from instances.type07 import model_type07
 from instances.type08 import model_type08
 from instances.type10 import model_type10
+from instances.type11 import model_type11
+from instances.type12 import model_type12
+from instances.type13 import model_type13
+from instances.type14 import model_type14
+from instances.type15 import model_type15
+from instances.type16 import model_type16
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +63,18 @@ def true_model(t, instance):
         return model_type08(instance)
     elif t == 10:
         return model_type10(instance)
+    elif t == 11:
+        return model_type11(instance)
+    elif t == 12:
+        return model_type12(instance)
+    elif t == 13:
+        return model_type13(instance)
+    elif t == 14:
+        return model_type14(instance)
+    elif t == 15:
+        return model_type15(instance)
+    elif t == 16:
+        return model_type16(instance)
 
 
 
@@ -183,8 +201,8 @@ def generalized_learning_experiment(t):
 
 
 if __name__ == "__main__":
-    # types = [l for l in range(1, 17) if l != 9]
-    types = [int(sys.argv[1])]
+    types = [l for l in range(11, 17) if l != 9]
+    # types = [int(sys.argv[1])]
     pool = Pool(processes=1)
-    pool.map(propositional_level_experiment, types)
-    # pool.map(generalized_learning_experiment, types)
+    # pool.map(propositional_level_experiment, types)
+    pool.map(generalized_learning_experiment, types)
