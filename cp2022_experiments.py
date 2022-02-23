@@ -149,5 +149,6 @@ if __name__ == "__main__":
     iterations = list(
         it.product(training_size, instances)
     )
+    print(iterations)
     pool = Pool(processes=len(iterations))
-    pool.map(sudoku, iterations)
+    pool.starmap(sudoku, iterations)
