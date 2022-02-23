@@ -245,6 +245,9 @@ def learn_propositional(instance):
         for key, val in learn_for_instance(instance, b, [x, y]).items():
             bounding_expressions[(b,) + (key,)] = val
 
+    for key, val in learn_for_instance(instance, sum, None).items():
+        bounding_expressions[(sum,) + key] = val
+
     return bounding_expressions
 
 
