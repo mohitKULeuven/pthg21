@@ -355,7 +355,7 @@ def create_gen_model(general_bounds, instance: Instance):
         expr = sympify(expr)
         for partition_indices in partitions.generate_partition_indices(instance):
             for indices in gen_index_groups(sequences, partition_indices):
-                print(indices)
+                # print(indices)
                 cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
                 f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
                 cpm_e = f(*cp_vars)

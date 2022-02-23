@@ -201,8 +201,10 @@ def generalized_learning_experiment(t):
 
 
 if __name__ == "__main__":
-    types = [l for l in range(11, 17) if l != 9]
-    # types = [int(sys.argv[1])]
-    pool = Pool(processes=1)
-    # pool.map(propositional_level_experiment, types)
-    pool.map(generalized_learning_experiment, types)
+    # types = [l for l in range(11, 17) if l != 9]
+    types = [int(sys.argv[1])]
+    pool = Pool(processes=len(types))
+    if sys.argv[2] == "propositional":
+        pool.map(propositional_level_experiment, types)
+    else:
+        pool.map(generalized_learning_experiment, types)

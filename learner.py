@@ -265,6 +265,7 @@ def check_solutions_fast(m: Model, m_vars, sols, objective_exp, objective_values
 
 
 def solutions_sample(model: Model, instance: Instance, size):
+    rng = np.random.RandomState(111)
     m_vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
     vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
@@ -275,7 +276,7 @@ def solutions_sample(model: Model, instance: Instance, size):
         sol = []
         m_copy = Model([c for c in model.constraints])
         for i, var in enumerate(m_vars):
-            random_val = np.random.randint(vars_lb[i], vars_ub[i])
+            random_val = rng.randint(vars_lb[i], vars_ub[i])
             sol.append(random_val)
             m_copy += [var == random_val]
         if m_copy.solve():
@@ -284,6 +285,7 @@ def solutions_sample(model: Model, instance: Instance, size):
 
 
 def solutions(model: Model, instance: Instance, size):
+    rng = np.random.RandomState(111)
     s = SolverLookup.get("ortools", model)
     # model = Model([c for c in model.constraints])
     # model = CPM_ortools(model)
@@ -299,7 +301,7 @@ def solutions(model: Model, instance: Instance, size):
         s += ~all([var == var.value() for var in vars])
         initial_point = []
         for i, v in enumerate(vars):
-            initial_point.append(np.random.randint(vars_lb[i], vars_ub[i]))
+            initial_point.append(rng.randint(vars_lb[i], vars_ub[i]))
         s.solution_hint(vars, initial_point)
         sol_count += 1
     return sols
