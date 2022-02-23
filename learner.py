@@ -6,6 +6,7 @@ import json
 from cpmpy import *
 from cpmpy.solvers import CPM_ortools
 from cpmpy.solvers.ortools import OrtSolutionCounter
+from cpmpy.transformations.get_variables import *
 from cpmpy_helper import solveAll
 from instance import Instance
 import time
@@ -283,32 +284,52 @@ def solutions_sample(model: Model, instance: Instance, size):
             sols.append(sol)
     return sols
 
-
-def solutions(model: Model, instance: Instance, size):
+def solutions(model: Model, size):
     rng = np.random.RandomState(111)
+    cp_vars = get_variables_model(model)
     s = SolverLookup.get("ortools", model)
-    # model = Model([c for c in model.constraints])
-    # model = CPM_ortools(model)
-    vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
-    s += sum(vars) >= 0
-    vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
-    vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
-
+    vars_lb = []
+    vars_ub = []
+    for var in cp_vars:
+        vars_lb.append(var.lb)
+        vars_ub.append(var.ub)
     sols = []
     sol_count = 0
     while s.solve() and sol_count < size:
-        sols.append([var.value() for var in vars])
-        s += ~all([var == var.value() for var in vars])
+        sols.append([var.value() for var in cp_vars])
+        s += ~all([var == var.value() for var in cp_vars])
         initial_point = []
-        for i, v in enumerate(vars):
+        for i, v in enumerate(cp_vars):
             initial_point.append(rng.randint(vars_lb[i], vars_ub[i]))
-        s.solution_hint(vars, initial_point)
+        s.solution_hint(cp_vars, initial_point)
         sol_count += 1
     return sols
 
+# def solutions(model: Model, instance: Instance, size):
+#     rng = np.random.RandomState(111)
+#     s = SolverLookup.get("ortools", model)
+#     # model = Model([c for c in model.constraints])
+#     # model = CPM_ortools(model)
+#     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
+#     s += sum(vars) >= 0
+#     vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
+#     vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
+#
+#     sols = []
+#     sol_count = 0
+#     while s.solve() and sol_count < size:
+#         sols.append([var.value() for var in vars])
+#         s += ~all([var == var.value() for var in vars])
+#         initial_point = []
+#         for i, v in enumerate(vars):
+#             initial_point.append(rng.randint(vars_lb[i], vars_ub[i]))
+#         s.solution_hint(vars, initial_point)
+#         sol_count += 1
+#     return sols
+
 
 def statistic(model1, model2, instance: Instance, size=1000):
-    sols = solutions(model1, instance, size)
+    sols = solutions(model1, size)
     print(f"Number of solutions: {len(sols)}")
     # print(len(sols), type(sols), type(sols[0]), type(sols[0][0]))
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])

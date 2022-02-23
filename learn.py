@@ -98,7 +98,6 @@ class InputPartition(Partition):
         return f"InputPartition({self.input_key})"
 
 
-
 def gen_partitions(type_shape: dict[str, int], input_keys: list[str]) -> list[Partition]:
     """
     Generates partitions for a given shape
@@ -219,17 +218,19 @@ def fit_feature_expressions(
     # print(min_error_lb, min_error_ub)
     return lb, ub
 
-def learn_for_instance(instance: Instance, expression, exp_symbols):
+
+def learn_for_instance(instance: Instance, expression, exp_symbols, training_size=None):
     f = lambdify(exp_symbols, expression, "math")
     print("expression", expression)
     if not instance.has_solutions():
         return
     local_bounds = dict()
     for indices in instance.all_local_indices(exp_symbols):
-        vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
+        vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in indices])
         local_bounds[indices] = min(vals), max(vals)
         # print("\t", indices, local_bounds[indices])
     return local_bounds
+
 
 def learn_propositional(instance):
     x, y = symbols("x y")
@@ -244,7 +245,8 @@ def learn_propositional(instance):
 
     return bounding_expressions
 
-def learn_for_expression(instances: list[Instance], expression, exp_symbols):
+
+def learn_for_expression(instances: list[Instance], expression, exp_symbols, training_size=None):
     name = str(expression)
     f = lambdify(exp_symbols, expression, "math")
     bounds_over_partitions_across_instances = dict()
@@ -264,7 +266,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
         local_bounds = dict()
 
         for indices in instance.all_local_indices(exp_symbols):
-            vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
+            vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in indices])
             local_bounds[indices] = min(vals), max(vals)
 
         bounds_over_partitions = dict()
@@ -275,6 +277,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
 
             # all indices in a specific column
             for partition_indices in partitions.generate_partition_indices(instance):
+                # print(partition_indices, "\t")
                 for sequence in all_sequences:  # all-pairs, sequential values
                     partition_sequence_bounds = [
                         local_bounds[index_group]
@@ -312,7 +315,8 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
                       for instance in instances if instance.has_solutions()}
             # print(bounds)
             symbolic_bounds = fit_feature_expressions(bounds, candidate_features)
-            if sequence == Sequence.SEQUENCE_PAIRS and bounding_expressions[(partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+            if sequence == Sequence.SEQUENCE_PAIRS and bounding_expressions[
+                (partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
                 continue
             bounding_expressions[(partitions, sequence)] = symbolic_bounds
             print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
@@ -321,15 +325,15 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
     return bounding_expressions
 
 
-def learn(instances):
+def learn(instances, training_size=None):
     x, y = symbols("x y")
     bounding_expressions = dict()
     for u in generate_unary_exp(x):
-        for key, val in learn_for_expression(instances, u, [x]).items():
+        for key, val in learn_for_expression(instances, u, [x], training_size).items():
             bounding_expressions[(u,) + key] = val
 
     for b in generate_binary_expr(x, y):
-        for key, val in learn_for_expression(instances, b, [x, y]).items():
+        for key, val in learn_for_expression(instances, b, [x, y], training_size).items():
             bounding_expressions[(b,) + key] = val
 
     return bounding_expressions

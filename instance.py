@@ -18,7 +18,7 @@ def nested_map(f, tensor):
         return f(tensor)
 
 
-def load_input_partitions(type_number, input_data):
+def load_input_partitions(type_number, input_data, constants):
     if type_number == 1:
         return {
             "edges": [
@@ -26,6 +26,18 @@ def load_input_partitions(type_number, input_data):
                 for d in input_data["list"]
             ]
         }
+    elif type_number == 5 or type_number == 6:
+        partitions = {"blocks": []}
+        size = constants["size"]
+        for i in range(size):
+            for j in range(size):
+                partition = []
+                for k in range(i * size, (i + 1) * size):
+                    for l in range(j * size, (j + 1) * size):
+                        partition.append(("array", k, l))
+                partitions["blocks"].append(partition)
+        return partitions
+
     return {}
 
 
@@ -45,12 +57,12 @@ class Instance:
         self.problem_type = problem_type
         self.jsonSeq = None
         self.input_data = json_data.get("inputData", {})
-        self.input_partitions = load_input_partitions(problem_type, self.input_data)
-        self.input_assignments = load_input_assignments(problem_type, self.input_data)
         self.constants = {k: v for k, v in self.input_data.items() if isinstance(v, (int, float))}
         if "size" in json_data:
             self.constants["size"] = json_data["size"]
 
+        self.input_partitions = load_input_partitions(problem_type, self.input_data, self.constants)
+        self.input_assignments = load_input_assignments(problem_type, self.input_data)
         self.formatTemplate = json_data["formatTemplate"]
 
         for k, v in json_data["formatTemplate"].items():
