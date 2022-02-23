@@ -255,10 +255,10 @@ def learn_local_bounds(instance, expression, exp_symbols, training_size=None):
     local_bounds = dict()
 
     def compute_bounds(_indices):
-        try:
+        if exp_symbols is not None:
             expr = sympify(expression)
             f = lambdify(exp_symbols, expr, "math")
-        except SympifyError:
+        else:
             f = lambda *args: [expression(arg) for arg in args]
 
         vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices])
