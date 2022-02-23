@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 import sympy
-from sympy import symbols, lambdify, sympify, Symbol
+from sympy import symbols, lambdify, sympify, Symbol, SympifyError
 
 from instance import Instance
 import itertools as it
@@ -122,16 +122,20 @@ class Sequence(enum.Enum):
     ALL_UNARY = "all_unary", 1
     EVEN_UNARY = "even_unary", 1
     ODD_UNARY = "odd_unary", 1
+    FULL_UNARY = "full_unary", 1
 
     ALL_PAIRS = "all_pairs", 2
     SEQUENCE_PAIRS = "sequence_pairs", 2
 
 
 def gen_sequences(exp_symbols):
+    if exp_symbols is None:
+        return [Sequence.FULL_UNARY]
+
     return [
         s
         for s in Sequence
-        if (s.value[1] == len(exp_symbols)) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY)
+        if (s.value[1] == len(exp_symbols)) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY, Sequence.FULL_UNARY)
     ]
 
 
@@ -143,6 +147,8 @@ def gen_index_groups(sequence, partition_indices):
         return [(partition_indices[i],) for i in range(0, len(partition_indices), 2)]
     if sequence == Sequence.ODD_UNARY:
         return [(partition_indices[i],) for i in range(1, len(partition_indices), 2)]
+    if sequence == Sequence.FULL_UNARY:
+        return [tuple(i for i in partition_indices)]
 
     if sequence == Sequence.ALL_PAIRS:
         return list(it.combinations(partition_indices, r=2))
@@ -224,12 +230,8 @@ def learn_for_instance(instance: Instance, expression, exp_symbols, training_siz
     print("expression", expression)
     if not instance.has_solutions():
         return
-    local_bounds = dict()
-    for indices in instance.all_local_indices(exp_symbols):
-        vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in indices])
-        local_bounds[indices] = min(vals), max(vals)
-        # print("\t", indices, local_bounds[indices])
-    return local_bounds
+
+    return learn_local_bounds(instance, expression, exp_symbols, training_size)
 
 
 def learn_propositional(instance):
@@ -246,9 +248,35 @@ def learn_propositional(instance):
     return bounding_expressions
 
 
+def learn_local_bounds(instance, expression, exp_symbols, training_size=None):
+    local_bounds = dict()
+
+    def compute_bounds(_indices):
+        try:
+            expr = sympify(expression)
+            f = lambdify(exp_symbols, expr, "math")
+        except SympifyError:
+            f = lambda *args: [expression(arg) for arg in args]
+
+        vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices])
+        local_bounds[_indices] = min(vals), max(vals)
+
+    if exp_symbols is not None:
+        for indices in instance.all_local_indices(exp_symbols):
+            compute_bounds(indices)
+    else:
+        type_shape = compute_shape([instance])
+        input_keys = compute_input_keys([instance])
+        all_partitions = gen_partitions(type_shape, input_keys)
+
+        for partition in all_partitions:
+            for partition_indices in partition.generate_partition_indices(instance):
+                compute_bounds(tuple(partition_indices))
+
+    return local_bounds
+
+
 def learn_for_expression(instances: list[Instance], expression, exp_symbols, training_size=None):
-    name = str(expression)
-    f = lambdify(exp_symbols, expression, "math")
     bounds_over_partitions_across_instances = dict()
     type_shape = compute_shape(instances)
     input_keys = compute_input_keys(instances)
@@ -263,11 +291,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols, tra
         if not instance.has_solutions():
             continue
 
-        local_bounds = dict()
-
-        for indices in instance.all_local_indices(exp_symbols):
-            vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in indices])
-            local_bounds[indices] = min(vals), max(vals)
+        local_bounds = learn_local_bounds(instance, expression, exp_symbols, training_size)
 
         bounds_over_partitions = dict()
 
@@ -330,77 +354,65 @@ def learn(instances, training_size=None):
     bounding_expressions = dict()
     for u in generate_unary_exp(x):
         for key, val in learn_for_expression(instances, u, [x], training_size).items():
+            # noinspection PyTypeChecker
             bounding_expressions[(u,) + key] = val
 
     for b in generate_binary_expr(x, y):
         for key, val in learn_for_expression(instances, b, [x, y], training_size).items():
+            # noinspection PyTypeChecker
             bounding_expressions[(b,) + key] = val
+
+    for key, val in learn_for_expression(instances, sum, None, training_size).items():
+        bounding_expressions[(sum,) + key] = val
 
     return bounding_expressions
 
 
-def create_gen_model(general_bounds, instance: Instance):
-    # cp_vars = instance.cp_vars
-    exp_symbols = symbols("x y")
+def ground_bound(instance, bound):
+    try:
+        for k, v in instance.constants.items():
+            _bound = bound.subs(Symbol(k), v)
+        return int(bound)
+    except AttributeError:
+        return bound
 
-    def ground_bound(_bound):
-        try:
-            for k, v in instance.constants.items():
-                _bound = _bound.subs(Symbol(k), v)
-            return int(_bound)
-        except AttributeError:
-            return _bound
+
+def encode_constraint(m, instance, indices, expr, exp_symbols, bounds):
+    lb, ub = bounds
+    cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
+
+    try:
+        expr = sympify(expr)
+        f = lambdify(exp_symbols[:len(cp_vars)], sympify(expr), "math")
+    except SympifyError:
+        f = lambda *args: expr(args)
+
+    cpm_e = f(*cp_vars)
+    if lb is not None:
+        m += [cpm_e >= ground_bound(instance, lb)]
+    if ub is not None:
+        m += [cpm_e <= ground_bound(instance, ub)]
+
+
+def create_model(general_bounds, instance: Instance, propositional):
+    exp_symbols = symbols("x y")
 
     m = Model()
     total_constraints = 0
-    for (expr, partitions, sequences), (lb, ub) in general_bounds.items():
-        # if lb is None and ub is None:
-        #     continue
-        expr = sympify(expr)
-        for partition_indices in partitions.generate_partition_indices(instance):
-            for indices in gen_index_groups(sequences, partition_indices):
-                # print(indices)
-                cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
-                f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
-                cpm_e = f(*cp_vars)
-                if lb is not None:
-                    m += [cpm_e >= ground_bound(lb)]
-                if ub is not None:
-                    m += [cpm_e <= ground_bound(ub)]
-                total_constraints += 2
+
+    if propositional:
+        for (expr, indices), bounds in general_bounds.items():
+            encode_constraint(m, instance, indices, expr, exp_symbols, bounds)
+            total_constraints += 2
+    else:
+        for (expr, partitions, sequences), bounds in general_bounds.items():
+            for partition_indices in partitions.generate_partition_indices(instance):
+                for indices in gen_index_groups(sequences, partition_indices):
+                    encode_constraint(m, instance, indices, expr, exp_symbols, bounds)
+                    total_constraints += 2
 
     if instance.input_assignments:
         for k, v in instance.input_assignments.items():
             m += [instance.cp_vars[k[0]][k[1:]] == v]
-    return m, total_constraints
 
-
-def create_propositional_model(general_bounds, instance: Instance):
-    exp_symbols = symbols("x y")
-
-    def ground_bound(_bound):
-        try:
-            for k, v in instance.constants.items():
-                _bound = _bound.subs(Symbol(k), v)
-            return int(_bound)
-        except AttributeError:
-            return _bound
-
-    m = Model()
-    total_constraints = 0
-    for (expr, indices), (lb, ub) in general_bounds.items():
-        # print((expr, indices), (lb, ub))
-        expr = sympify(expr)
-        cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
-        f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
-        cpm_e = f(*cp_vars)
-        if lb is not None:
-            m += [cpm_e >= ground_bound(lb)]
-        if ub is not None:
-            m += [cpm_e <= ground_bound(ub)]
-        total_constraints += 2
-
-    if instance.input_assignments:
-        for k, v in instance.input_assignments.items():
-            m += [instance.cp_vars[k[0]][k[1:]] == v]
     return m, total_constraints

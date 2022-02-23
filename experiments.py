@@ -10,7 +10,7 @@ import time
 from multiprocessing import Pool
 
 from instance import Instance
-from learn import learn, create_gen_model, learn_propositional, create_propositional_model
+from learn import learn, create_model, learn_propositional
 import sys
 from instances.type01 import model_type01
 from instances.type02 import model_type02
@@ -110,7 +110,7 @@ def propositional_level_experiment(t):
             bounding_expressions = learn_propositional(instance)
             learning_time = time.time() - start
             pickleVar = bounding_expressions
-            learned_model, total_constraints = create_propositional_model(bounding_expressions, instance)
+            learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=True)
 
             start_test = time.time()
             precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
@@ -171,7 +171,7 @@ def generalized_learning_experiment(t):
         for instance in instances:
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
-            learned_model, total_constraints = create_gen_model(bounding_expressions, instance)
+            learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
             start_test = time.time()
 
             precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
@@ -198,6 +198,17 @@ def generalized_learning_experiment(t):
             )
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))
     # csvfile.close()
+
+
+def exp_learn_specific_model(t):
+    path = f"instances/type{t:02d}/inst*.json"
+    files = sorted(glob.glob(path))
+    instances = []
+    for file in files:
+        with open(file) as f:
+            instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
+
+    return learn(instances)
 
 
 if __name__ == "__main__":
