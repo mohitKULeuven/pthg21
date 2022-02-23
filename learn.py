@@ -253,7 +253,6 @@ def learn_propositional(instance):
 
 def learn_local_bounds(instance, expression, exp_symbols, training_size=None):
     local_bounds = dict()
-
     def compute_bounds(_indices):
         if exp_symbols is not None:
             expr = sympify(expression)
@@ -365,8 +364,8 @@ def learn(instances, training_size=None):
             # noinspection PyTypeChecker
             bounding_expressions[(b,) + key] = val
 
-    for key, val in learn_for_expression(instances, sum, None, training_size).items():
-        bounding_expressions[(sum,) + key] = val
+    # for key, val in learn_for_expression(instances, sum, None, training_size).items():
+    #     bounding_expressions[(sum,) + key] = val
 
     return bounding_expressions
 

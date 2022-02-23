@@ -111,7 +111,7 @@ def propositional_level_experiment(t):
             learning_time = time.time() - start
             pickleVar = bounding_expressions
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=True)
-
+            print(f"number of constraints: {len(learned_model.constraints)}")
             start_test = time.time()
             precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
             print(f"precision: {int(precision)}%  |  recall:  {int(recall)}%")
@@ -172,6 +172,7 @@ def generalized_learning_experiment(t):
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
+            print(f"number of constraints: {len(learned_model.constraints)}")
             start_test = time.time()
 
             precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
