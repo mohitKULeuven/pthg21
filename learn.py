@@ -364,8 +364,8 @@ def learn(instances, training_size=None):
             # noinspection PyTypeChecker
             bounding_expressions[(b,) + key] = val
 
-    # for key, val in learn_for_expression(instances, sum, None, training_size).items():
-    #     bounding_expressions[(sum,) + key] = val
+    for key, val in learn_for_expression(instances, sum, None, training_size).items():
+        bounding_expressions[(sum,) + key] = val
 
     return bounding_expressions
 
