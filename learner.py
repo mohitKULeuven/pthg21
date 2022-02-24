@@ -283,6 +283,7 @@ def solutions_sample(model: Model, instance: Instance, size):
             sols.append(sol)
     return sols
 
+
 def solutions(model: Model, size):
     rng = np.random.RandomState(111)
     cp_vars = get_variables_model(model)
@@ -303,6 +304,7 @@ def solutions(model: Model, size):
         s.solution_hint(cp_vars, initial_point)
         sol_count += 1
     return sols
+
 
 # def solutions(model: Model, instance: Instance, size):
 #     rng = np.random.RandomState(111)
@@ -330,6 +332,8 @@ def solutions(model: Model, size):
 def statistic(model1, model2, instance: Instance, size=100):
     sols = solutions(model1, size)
     print(f"Number of solutions: {len(sols)}")
+    if len(sols) == 0:
+        return 0
     # print(len(sols), type(sols), type(sols[0]), type(sols[0][0]))
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     s = SolverLookup.get("ortools", model2)
