@@ -182,7 +182,7 @@ class Sequence(enum.Enum):
     FULL_UNARY = "full_unary", 1
 
     ALL_PAIRS = "all_pairs", 2
-    SEQUENCE_PAIRS = "sequence_pairs", 2
+    # SEQUENCE_PAIRS = "sequence_pairs", 2
 
 
 def gen_sequences(arity):
@@ -209,8 +209,8 @@ def gen_index_groups(sequence, partition_indices):
 
     if sequence == Sequence.ALL_PAIRS:
         return list(it.combinations(partition_indices, r=2))
-    if sequence == Sequence.SEQUENCE_PAIRS:
-        return [(partition_indices[i], partition_indices[i + 1]) for i in range(len(partition_indices) - 1)]
+    # if sequence == Sequence.SEQUENCE_PAIRS:
+    #     return [(partition_indices[i], partition_indices[i + 1]) for i in range(len(partition_indices) - 1)]
 
 
 def filter_partition_bounds(partition_bounds, threshold=1):
@@ -391,14 +391,14 @@ def learn_for_expression(instances: list[Instance], expression, training_size=No
                     bounding_expressions[
                         (all_partitions[0], sequence)] == symbolic_bounds:
                 continue
-            if sequence == Sequence.SEQUENCE_PAIRS and (partitions, Sequence.ALL_PAIRS) in bounding_expressions and \
-                    bounding_expressions[
-                        (partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
-                continue
-            if sequence == Sequence.SEQUENCE_PAIRS and (all_partitions[0], Sequence.ALL_PAIRS) in bounding_expressions and \
-                    bounding_expressions[
-                        (all_partitions[0], Sequence.ALL_PAIRS)] == symbolic_bounds:
-                continue
+            # if sequence == Sequence.SEQUENCE_PAIRS and (partitions, Sequence.ALL_PAIRS) in bounding_expressions and \
+            #         bounding_expressions[
+            #             (partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+            #     continue
+            # if sequence == Sequence.SEQUENCE_PAIRS and (all_partitions[0], Sequence.ALL_PAIRS) in bounding_expressions and \
+            #         bounding_expressions[
+            #             (all_partitions[0], Sequence.ALL_PAIRS)] == symbolic_bounds:
+            #     continue
             ###################
             bounding_expressions[(partitions, sequence)] = symbolic_bounds
             print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])

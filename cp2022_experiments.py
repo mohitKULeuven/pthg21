@@ -18,9 +18,9 @@ from instances.nurse_rostering import nurse_rostering_model, nurse_rostering_ins
 logger = logging.getLogger(__name__)
 
 
-def sudoku(training_size, inst):
+def sudoku(training_size):
     t = 6
-    with open(f"type_{t:02d}_training_size_{training_size}_instance_{inst}.csv", "w") as csv_file:
+    with open(f"type_{t:02d}_training_size_{training_size}.csv", "w") as csv_file:
         filewriter = csv.writer(csv_file, delimiter=",")
         filewriter.writerow(
             [
@@ -33,8 +33,8 @@ def sudoku(training_size, inst):
                 "testing_time",
                 "precision",
                 "recall",
-                "perc_pos",
-                "perc_neg", "total", "correct_objective", "count"
+                # "perc_pos",
+                # "perc_neg", "total", "correct_objective", "count"
             ]
         )
         path = f"instances/type{t:02d}/inst*.json"
@@ -44,11 +44,11 @@ def sudoku(training_size, inst):
             with open(file) as f:
                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
         start = time.time()
-        bounding_expressions = learn([instances[inst]], training_size)
+        bounding_expressions = learn(instances[:2], training_size)
         learning_time = time.time() - start
         pickleVar = bounding_expressions
 
-        for instance in instances[:2]:
+        for instance in instances[:3]:
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
@@ -57,10 +57,10 @@ def sudoku(training_size, inst):
             precision, recall = learner.compare_models(learned_model, model_type06(instance), instance)
             print(f"precision: {int(precision)}%  |  recall:  {int(recall)}%")
 
-            perc_pos, perc_neg = None, None
-            if instance.has_solutions():
-                perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
-                print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
+            # perc_pos, perc_neg = None, None
+            # if instance.has_solutions():
+            #     perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
+            #     print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
 
             filewriter.writerow(
                 [
@@ -73,8 +73,8 @@ def sudoku(training_size, inst):
                     time.time() - start_test,
                     precision,
                     recall,
-                    perc_pos,
-                    perc_neg, total, co, cnt
+                    # perc_pos,
+                    # perc_neg, total, co, cnt
                 ]
             )
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))
@@ -146,12 +146,8 @@ if __name__ == "__main__":
     training_size = [1, 5, 10]
 
     ###### sudoku ######
-    instances = [0, 1]
-    iterations = list(
-        it.product(training_size, instances)
-    )[:1]
-    pool = Pool(processes=len(iterations))
-    pool.starmap(sudoku, iterations)
+    pool = Pool(processes=len(training_size))
+    pool.map(sudoku, training_size)
     ####################
 
     ###### nurses ######

@@ -10,6 +10,7 @@ from cpmpy.transformations.get_variables import *
 from cpmpy_helper import solveAll
 from instance import Instance
 import time
+from musx import musx
 
 from cpmpy.transformations.flatten_model import get_or_make_var
 
@@ -206,10 +207,8 @@ def create_model(var_bounds, expr_bounds, name):
 def is_sat(m, m_vars, sols, exp, objectives=None):
     sats = []
     for i, sol in enumerate(sols):
-        # print(i, sol)
         m2 = Model([c for c in m.constraints])
         m2 += [m_var == sol[i] for i, m_var in enumerate(m_vars)]
-        # print(m2)
         sat = m2.solve()
         if objectives is not None and sat:
             sat = exp(sol) == objectives[i]
@@ -343,7 +342,7 @@ def statistic(model1, model2, instance: Instance, size=100):
 def compare_models(learned_model: Model, target_model: Model, instance):
     recall = statistic(target_model, learned_model, instance)
     precision = statistic(learned_model, target_model, instance)
-    print(f"Precision: {precision}, Recall: {recall}")
+    # print(f"Precision: {precision}, Recall: {recall}")
     return precision, recall
 
 
