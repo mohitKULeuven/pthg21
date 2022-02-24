@@ -8,6 +8,7 @@ import pickle
 import logging
 import time
 from multiprocessing import Pool
+import argparse
 
 from instance import Instance
 from learn import learn, create_model, learn_propositional
@@ -172,6 +173,7 @@ def generalized_learning_experiment(t):
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
+            # print(learned_model)
             print(f"number of constraints: {len(learned_model.constraints)}")
             start_test = time.time()
 
@@ -212,11 +214,27 @@ def exp_learn_specific_model(t):
     return learn(instances)
 
 
+# if __name__ == "__main__":
+#     # types = [l for l in range(11, 17) if l != 9]
+#     types = [int(sys.argv[1])]
+#     pool = Pool(processes=len(types))
+#     if sys.argv[2] == "propositional":
+#         pool.map(propositional_level_experiment, types)
+#     else:
+#         pool.map(generalized_learning_experiment, types)
+
 if __name__ == "__main__":
-    # types = [l for l in range(11, 17) if l != 9]
-    types = [int(sys.argv[1])]
-    pool = Pool(processes=len(types))
-    if sys.argv[2] == "propositional":
-        pool.map(propositional_level_experiment, types)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--type", type=int)
+    parser.add_argument("-p", "--propositional", action="store_true")
+    parser.add_argument("-t", "--test", action="store_true")
+    args = parser.parse_args()
+
+    method = propositional_level_experiment if args.propositional else generalized_learning_experiment
+
+    if args.test:
+        method(args.type)
     else:
-        pool.map(generalized_learning_experiment, types)
+        types = [l for l in range(1, 17) if l != 9]
+        pool = Pool(processes=len(types))
+        pool.map(method, types)

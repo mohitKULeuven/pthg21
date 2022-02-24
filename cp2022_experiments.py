@@ -48,7 +48,7 @@ def sudoku(training_size, inst):
         learning_time = time.time() - start
         pickleVar = bounding_expressions
 
-        for instance in instances:
+        for instance in instances[:2]:
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
@@ -146,17 +146,17 @@ if __name__ == "__main__":
     training_size = [1]
 
     ###### sudoku ######
-    # instances = [0]
-    # iterations = list(
-    #     it.product(training_size, instances)
-    # )[:1]
-    # print(iterations)
-    # pool = Pool(processes=len(iterations))
-    # pool.starmap(sudoku, iterations)
+    instances = [0]
+    iterations = list(
+        it.product(training_size, instances)
+    )[:1]
+    print(iterations)
+    pool = Pool(processes=len(iterations))
+    pool.starmap(sudoku, iterations)
     ####################
 
     ###### nurses ######
-    pool = Pool(processes=len(training_size))
-    pool.map(nurse_rostering, training_size)
+    # pool = Pool(processes=len(training_size))
+    # pool.map(nurse_rostering, training_size)
     ####################
 

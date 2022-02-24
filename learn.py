@@ -296,7 +296,7 @@ def learn_propositional(instance):
     for exp in gen_expressions():
         for key, val in learn_for_instance(instance, exp).items():
             # noinspection PyTypeChecker
-            bounding_expressions[(exp,) + key] = val
+            bounding_expressions[(exp,) + (key,)] = val
 
     return bounding_expressions
 
@@ -408,9 +408,10 @@ def learn(instances, training_size=None):
 
 
 def ground_bound(instance, bound):
+    # print(instance.constants, bound)
     try:
         for k, v in instance.constants.items():
-            _bound = bound.subs(Symbol(k), v)
+            bound = bound.subs(Symbol(k), v)
         return int(bound)
     except AttributeError:
         return bound
@@ -418,12 +419,14 @@ def ground_bound(instance, bound):
 
 def encode_constraint(m, instance, indices, expression, bounds):
     lb, ub = bounds
+    # print(indices)
     cp_vars = [np.array([instance.cp_vars[index[0]][index[1:]]]) for index in indices]
-    cpm_e = expression.evaluate(*cp_vars)
+    cpm_e = expression.evaluate(*cp_vars)[0]
     if lb is not None:
         m += [cpm_e >= ground_bound(instance, lb)]
     if ub is not None:
         m += [cpm_e <= ground_bound(instance, ub)]
+    # print(m)
 
 
 def create_model(general_bounds, instance: Instance, propositional):
