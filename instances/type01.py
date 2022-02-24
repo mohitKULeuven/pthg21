@@ -1,13 +1,9 @@
 import glob
 
-import numpy as np
 from cpmpy import *
 import json
-import sys
-import os
-import time
-import learner
-from learn import learn, create_gen_model
+
+from learn import learn
 from instance import Instance
 
 """

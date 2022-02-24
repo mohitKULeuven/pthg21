@@ -6,9 +6,11 @@ import json
 from cpmpy import *
 from cpmpy.solvers import CPM_ortools
 from cpmpy.solvers.ortools import OrtSolutionCounter
+from cpmpy.transformations.get_variables import *
 from cpmpy_helper import solveAll
 from instance import Instance
 import time
+from musx import musx
 
 from cpmpy.transformations.flatten_model import get_or_make_var
 
@@ -205,10 +207,8 @@ def create_model(var_bounds, expr_bounds, name):
 def is_sat(m, m_vars, sols, exp, objectives=None):
     sats = []
     for i, sol in enumerate(sols):
-        # print(i, sol)
         m2 = Model([c for c in m.constraints])
         m2 += [m_var == sol[i] for i, m_var in enumerate(m_vars)]
-        # print(m2)
         sat = m2.solve()
         if objectives is not None and sat:
             sat = exp(sol) == objectives[i]
@@ -265,6 +265,7 @@ def check_solutions_fast(m: Model, m_vars, sols, objective_exp, objective_values
 
 
 def solutions_sample(model: Model, instance: Instance, size):
+    rng = np.random.RandomState(111)
     m_vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
     vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
@@ -275,7 +276,7 @@ def solutions_sample(model: Model, instance: Instance, size):
         sol = []
         m_copy = Model([c for c in model.constraints])
         for i, var in enumerate(m_vars):
-            random_val = np.random.randint(vars_lb[i], vars_ub[i])
+            random_val = rng.randint(vars_lb[i], vars_ub[i])
             sol.append(random_val)
             m_copy += [var == random_val]
         if m_copy.solve():
@@ -283,31 +284,56 @@ def solutions_sample(model: Model, instance: Instance, size):
     return sols
 
 
-def solutions(model: Model, instance: Instance, size):
+def solutions(model: Model, size):
+    rng = np.random.RandomState(111)
+    cp_vars = get_variables_model(model)
     s = SolverLookup.get("ortools", model)
-    # model = Model([c for c in model.constraints])
-    # model = CPM_ortools(model)
-    vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
-    s += sum(vars) >= 0
-    vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
-    vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
-
+    vars_lb = []
+    vars_ub = []
+    for var in cp_vars:
+        vars_lb.append(var.lb)
+        vars_ub.append(var.ub)
     sols = []
     sol_count = 0
     while s.solve() and sol_count < size:
-        sols.append([var.value() for var in vars])
-        s += ~all([var == var.value() for var in vars])
+        sols.append([var.value() for var in cp_vars])
+        s += ~all([var == var.value() for var in cp_vars])
         initial_point = []
-        for i, v in enumerate(vars):
-            initial_point.append(np.random.randint(vars_lb[i], vars_ub[i]))
-        s.solution_hint(vars, initial_point)
+        for i, v in enumerate(cp_vars):
+            initial_point.append(rng.randint(vars_lb[i], vars_ub[i]))
+        s.solution_hint(cp_vars, initial_point)
         sol_count += 1
     return sols
 
 
-def statistic(model1, model2, instance: Instance, size=1000):
-    sols = solutions(model1, instance, size)
+# def solutions(model: Model, instance: Instance, size):
+#     rng = np.random.RandomState(111)
+#     s = SolverLookup.get("ortools", model)
+#     # model = Model([c for c in model.constraints])
+#     # model = CPM_ortools(model)
+#     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
+#     s += sum(vars) >= 0
+#     vars_lb = np.hstack([instance.var_lbs[k].flatten() for k in instance.var_lbs])
+#     vars_ub = np.hstack([instance.var_ubs[k].flatten() for k in instance.var_ubs])
+#
+#     sols = []
+#     sol_count = 0
+#     while s.solve() and sol_count < size:
+#         sols.append([var.value() for var in vars])
+#         s += ~all([var == var.value() for var in vars])
+#         initial_point = []
+#         for i, v in enumerate(vars):
+#             initial_point.append(rng.randint(vars_lb[i], vars_ub[i]))
+#         s.solution_hint(vars, initial_point)
+#         sol_count += 1
+#     return sols
+
+
+def statistic(model1, model2, instance: Instance, size=100):
+    sols = solutions(model1, size)
     print(f"Number of solutions: {len(sols)}")
+    if len(sols) == 0:
+        return 0
     # print(len(sols), type(sols), type(sols[0]), type(sols[0][0]))
     vars = np.hstack([instance.cp_vars[k].flatten() for k in instance.cp_vars])
     s = SolverLookup.get("ortools", model2)
@@ -320,7 +346,7 @@ def statistic(model1, model2, instance: Instance, size=1000):
 def compare_models(learned_model: Model, target_model: Model, instance):
     recall = statistic(target_model, learned_model, instance)
     precision = statistic(learned_model, target_model, instance)
-    print(f"Precision: {precision}, Recall: {recall}")
+    # print(f"Precision: {precision}, Recall: {recall}")
     return precision, recall
 
 

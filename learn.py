@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 import sympy
-from sympy import symbols, lambdify, sympify, Symbol
+from sympy import symbols, lambdify, Symbol
 
 from instance import Instance
 import itertools as it
@@ -33,6 +33,63 @@ def generate_binary_expr(x, y):
     yield x + y
     yield x - y
     yield abs(x - y)
+
+
+class Expression:
+    @property
+    def arity(self):
+        raise NotImplementedError()
+
+    def evaluate(self, *args):
+        raise NotImplementedError()
+
+    def bounds(self, *args):
+        vals = self.evaluate(*args)
+        return min(vals), max(vals)
+
+
+class SympyExpression(Expression):
+    def __init__(self, exp, exp_symbols):
+        self.exp = exp
+        self.exp_symbols = exp_symbols
+        self.f = lambdify(exp_symbols, exp, "math")
+
+    @property
+    def arity(self):
+        return len(self.exp_symbols)
+
+    def evaluate(self, *args):
+        return self.f(*args)
+
+    def __str__(self):
+        return str(self.exp)
+
+
+class AggregateExpression(Expression):
+    def __init__(self, f):
+        self.f = f
+
+    @property
+    def arity(self):
+        return None
+
+    def evaluate(self, *args):
+        return [self.f(assignment) for assignment in zip(*args)]
+
+    def __str__(self):
+        return self.f.__name__
+
+
+def gen_expressions():
+    x, y = symbols("x y")
+
+    for u in generate_unary_exp(x):
+        yield SympyExpression(u, [x])
+
+    for b in generate_binary_expr(x, y):
+        yield SympyExpression(b, [x, y])
+
+    yield AggregateExpression(sum)
 
 
 # model = []
@@ -98,7 +155,6 @@ class InputPartition(Partition):
         return f"InputPartition({self.input_key})"
 
 
-
 def gen_partitions(type_shape: dict[str, int], input_keys: list[str]) -> list[Partition]:
     """
     Generates partitions for a given shape
@@ -123,16 +179,20 @@ class Sequence(enum.Enum):
     ALL_UNARY = "all_unary", 1
     EVEN_UNARY = "even_unary", 1
     ODD_UNARY = "odd_unary", 1
+    FULL_UNARY = "full_unary", 1
 
     ALL_PAIRS = "all_pairs", 2
-    SEQUENCE_PAIRS = "sequence_pairs", 2
+    # SEQUENCE_PAIRS = "sequence_pairs", 2
 
 
-def gen_sequences(exp_symbols):
+def gen_sequences(arity):
+    if arity is None:
+        return [Sequence.FULL_UNARY]
+
     return [
         s
         for s in Sequence
-        if (s.value[1] == len(exp_symbols)) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY)
+        if (s.value[1] == arity) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY, Sequence.FULL_UNARY)
     ]
 
 
@@ -144,11 +204,13 @@ def gen_index_groups(sequence, partition_indices):
         return [(partition_indices[i],) for i in range(0, len(partition_indices), 2)]
     if sequence == Sequence.ODD_UNARY:
         return [(partition_indices[i],) for i in range(1, len(partition_indices), 2)]
+    if sequence == Sequence.FULL_UNARY:
+        return [tuple(i for i in partition_indices)]
 
     if sequence == Sequence.ALL_PAIRS:
         return list(it.combinations(partition_indices, r=2))
-    if sequence == Sequence.SEQUENCE_PAIRS:
-        return [(partition_indices[i], partition_indices[i + 1]) for i in range(len(partition_indices) - 1)]
+    # if sequence == Sequence.SEQUENCE_PAIRS:
+    #     return [(partition_indices[i], partition_indices[i + 1]) for i in range(len(partition_indices) - 1)]
 
 
 def filter_partition_bounds(partition_bounds, threshold=1):
@@ -219,41 +281,56 @@ def fit_feature_expressions(
     # print(min_error_lb, min_error_ub)
     return lb, ub
 
-def learn_for_instance(instance: Instance, expression, exp_symbols):
-    f = lambdify(exp_symbols, expression, "math")
+
+def learn_for_instance(instance: Instance, expression, training_size=None):
     print("expression", expression)
     if not instance.has_solutions():
         return
-    local_bounds = dict()
-    for indices in instance.all_local_indices(exp_symbols):
-        vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
-        local_bounds[indices] = min(vals), max(vals)
-        # print("\t", indices, local_bounds[indices])
-    return local_bounds
+
+    return learn_local_bounds(instance, expression, training_size)
+
 
 def learn_propositional(instance):
-    x, y = symbols("x y")
     bounding_expressions = dict()
-    for u in generate_unary_exp(x):
-        for key, val in learn_for_instance(instance, u, [x]).items():
-            bounding_expressions[(u,) + (key,)] = val
 
-    for b in generate_binary_expr(x, y):
-        for key, val in learn_for_instance(instance, b, [x, y]).items():
-            bounding_expressions[(b,) + (key,)] = val
+    for exp in gen_expressions():
+        for key, val in learn_for_instance(instance, exp).items():
+            # noinspection PyTypeChecker
+            bounding_expressions[(exp,) + (key,)] = val
 
     return bounding_expressions
 
-def learn_for_expression(instances: list[Instance], expression, exp_symbols):
-    name = str(expression)
-    f = lambdify(exp_symbols, expression, "math")
+
+def learn_local_bounds(instance, expression, training_size=None):
+    local_bounds = dict()
+
+    def compute_bounds(_indices):
+        args = [instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices]
+        local_bounds[_indices] = expression.bounds(*args)
+
+    if expression.arity is not None:
+        for indices in instance.all_local_indices(expression.arity):
+            compute_bounds(indices)
+    else:
+        type_shape = compute_shape([instance])
+        input_keys = compute_input_keys([instance])
+        all_partitions = gen_partitions(type_shape, input_keys)
+
+        for partition in all_partitions:
+            for partition_indices in partition.generate_partition_indices(instance):
+                compute_bounds(tuple(partition_indices))
+
+    return local_bounds
+
+
+def learn_for_expression(instances: list[Instance], expression, training_size=None):
     bounds_over_partitions_across_instances = dict()
     type_shape = compute_shape(instances)
     input_keys = compute_input_keys(instances)
     candidate_features = compute_candidate_features(instances)
     #
     all_partitions = gen_partitions(type_shape, input_keys)
-    all_sequences = gen_sequences(exp_symbols)
+    all_sequences = gen_sequences(expression.arity)
 
     print("expression", expression)
 
@@ -261,11 +338,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
         if not instance.has_solutions():
             continue
 
-        local_bounds = dict()
-
-        for indices in instance.all_local_indices(exp_symbols):
-            vals = f(*[instance.training_data[ind[0]][(slice(None),) + ind[1:]] for ind in indices])
-            local_bounds[indices] = min(vals), max(vals)
+        local_bounds = learn_local_bounds(instance, expression, training_size)
 
         bounds_over_partitions = dict()
 
@@ -275,6 +348,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
 
             # all indices in a specific column
             for partition_indices in partitions.generate_partition_indices(instance):
+                # print(partition_indices, "\t")
                 for sequence in all_sequences:  # all-pairs, sequential values
                     partition_sequence_bounds = [
                         local_bounds[index_group]
@@ -305,15 +379,27 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
 
     # print([i for i, ins in enumerate(instances) if ins.has_solutions()])
 
-    for partitions in all_partitions:
+    for i, partitions in enumerate(all_partitions):
         for sequence in all_sequences:
             bounds = {instance.number:
                           bounds_over_partitions_across_instances[instance.number][partitions][sequence]
                       for instance in instances if instance.has_solutions()}
             # print(bounds)
             symbolic_bounds = fit_feature_expressions(bounds, candidate_features)
-            if sequence == Sequence.SEQUENCE_PAIRS and bounding_expressions[(partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+            ##### for filtering redundant partitions and sequences ####
+            if i > 0 and (all_partitions[0], sequence) in bounding_expressions and \
+                    bounding_expressions[
+                        (all_partitions[0], sequence)] == symbolic_bounds:
                 continue
+            # if sequence == Sequence.SEQUENCE_PAIRS and (partitions, Sequence.ALL_PAIRS) in bounding_expressions and \
+            #         bounding_expressions[
+            #             (partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+            #     continue
+            # if sequence == Sequence.SEQUENCE_PAIRS and (all_partitions[0], Sequence.ALL_PAIRS) in bounding_expressions and \
+            #         bounding_expressions[
+            #             (all_partitions[0], Sequence.ALL_PAIRS)] == symbolic_bounds:
+            #     continue
+            ###################
             bounding_expressions[(partitions, sequence)] = symbolic_bounds
             print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
 
@@ -321,82 +407,56 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols):
     return bounding_expressions
 
 
-def learn(instances):
-    x, y = symbols("x y")
+def learn(instances, training_size=None):
     bounding_expressions = dict()
-    for u in generate_unary_exp(x):
-        for key, val in learn_for_expression(instances, u, [x]).items():
-            bounding_expressions[(u,) + key] = val
 
-    for b in generate_binary_expr(x, y):
-        for key, val in learn_for_expression(instances, b, [x, y]).items():
-            bounding_expressions[(b,) + key] = val
+    for exp in gen_expressions():
+        for key, val in learn_for_expression(instances, exp, training_size).items():
+            # noinspection PyTypeChecker
+            bounding_expressions[(exp,) + key] = val
 
     return bounding_expressions
 
 
-def create_gen_model(general_bounds, instance: Instance):
-    # cp_vars = instance.cp_vars
-    exp_symbols = symbols("x y")
+def ground_bound(instance, bound):
+    # print(instance.constants, bound)
+    try:
+        for k, v in instance.constants.items():
+            bound = bound.subs(Symbol(k), v)
+        return int(bound)
+    except AttributeError:
+        return bound
 
-    def ground_bound(_bound):
-        try:
-            for k, v in instance.constants.items():
-                _bound = _bound.subs(Symbol(k), v)
-            return int(_bound)
-        except AttributeError:
-            return _bound
 
+def encode_constraint(m, instance, indices, expression, bounds):
+    lb, ub = bounds
+    # print(indices)
+    cp_vars = [np.array([instance.cp_vars[index[0]][index[1:]]]) for index in indices]
+    cpm_e = expression.evaluate(*cp_vars)[0]
+    if lb is not None:
+        m += [cpm_e >= ground_bound(instance, lb)]
+    if ub is not None:
+        m += [cpm_e <= ground_bound(instance, ub)]
+    # print(m)
+
+
+def create_model(general_bounds, instance: Instance, propositional):
     m = Model()
     total_constraints = 0
-    for (expr, partitions, sequences), (lb, ub) in general_bounds.items():
-        # if lb is None and ub is None:
-        #     continue
-        expr = sympify(expr)
-        for partition_indices in partitions.generate_partition_indices(instance):
-            for indices in gen_index_groups(sequences, partition_indices):
-                print(indices)
-                cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
-                f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
-                cpm_e = f(*cp_vars)
-                if lb is not None:
-                    m += [cpm_e >= ground_bound(lb)]
-                if ub is not None:
-                    m += [cpm_e <= ground_bound(ub)]
-                total_constraints += 2
+
+    if propositional:
+        for (expr, indices), bounds in general_bounds.items():
+            encode_constraint(m, instance, indices, expr, bounds)
+            total_constraints += 2
+    else:
+        for (expr, partitions, sequences), bounds in general_bounds.items():
+            for partition_indices in partitions.generate_partition_indices(instance):
+                for indices in gen_index_groups(sequences, partition_indices):
+                    encode_constraint(m, instance, indices, expr, bounds)
+                    total_constraints += 2
 
     if instance.input_assignments:
         for k, v in instance.input_assignments.items():
             m += [instance.cp_vars[k[0]][k[1:]] == v]
-    return m, total_constraints
 
-
-def create_propositional_model(general_bounds, instance: Instance):
-    exp_symbols = symbols("x y")
-
-    def ground_bound(_bound):
-        try:
-            for k, v in instance.constants.items():
-                _bound = _bound.subs(Symbol(k), v)
-            return int(_bound)
-        except AttributeError:
-            return _bound
-
-    m = Model()
-    total_constraints = 0
-    for (expr, indices), (lb, ub) in general_bounds.items():
-        # print((expr, indices), (lb, ub))
-        expr = sympify(expr)
-        cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
-        f = lambdify(exp_symbols[:len(cp_vars)], expr, "math")
-        cpm_e = f(*cp_vars)
-        if lb is not None:
-            m += [cpm_e >= ground_bound(lb)]
-        if ub is not None:
-            m += [cpm_e <= ground_bound(ub)]
-        total_constraints += 2
-
-    if instance.input_assignments:
-        for k, v in instance.input_assignments.items():
-            m += [instance.cp_vars[k[0]][k[1:]] == v]
     return m, total_constraints
