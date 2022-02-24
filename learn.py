@@ -1,7 +1,7 @@
 from collections import defaultdict
 
 import sympy
-from sympy import symbols, lambdify, sympify, Symbol, SympifyError
+from sympy import symbols, lambdify, Symbol
 
 from instance import Instance
 import itertools as it
@@ -33,6 +33,63 @@ def generate_binary_expr(x, y):
     yield x + y
     yield x - y
     yield abs(x - y)
+
+
+class Expression:
+    @property
+    def arity(self):
+        raise NotImplementedError()
+
+    def evaluate(self, *args):
+        raise NotImplementedError()
+
+    def bounds(self, *args):
+        vals = self.evaluate(*args)
+        return min(vals), max(vals)
+
+
+class SympyExpression(Expression):
+    def __init__(self, exp, exp_symbols):
+        self.exp = exp
+        self.exp_symbols = exp_symbols
+        self.f = lambdify(exp_symbols, exp, "math")
+
+    @property
+    def arity(self):
+        return len(self.exp_symbols)
+
+    def evaluate(self, *args):
+        return self.f(*args)
+
+    def __str__(self):
+        return str(self.exp)
+
+
+class AggregateExpression(Expression):
+    def __init__(self, f):
+        self.f = f
+
+    @property
+    def arity(self):
+        return None
+
+    def evaluate(self, *args):
+        return [self.f(assignment) for assignment in zip(*args)]
+
+    def __str__(self):
+        return self.f.__name__
+
+
+def gen_expressions():
+    x, y = symbols("x y")
+
+    for u in generate_unary_exp(x):
+        yield SympyExpression(u, [x])
+
+    for b in generate_binary_expr(x, y):
+        yield SympyExpression(b, [x, y])
+
+    yield AggregateExpression(sum)
 
 
 # model = []
@@ -128,14 +185,14 @@ class Sequence(enum.Enum):
     SEQUENCE_PAIRS = "sequence_pairs", 2
 
 
-def gen_sequences(exp_symbols):
-    if exp_symbols is None:
+def gen_sequences(arity):
+    if arity is None:
         return [Sequence.FULL_UNARY]
 
     return [
         s
         for s in Sequence
-        if (s.value[1] == len(exp_symbols)) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY, Sequence.FULL_UNARY)
+        if (s.value[1] == arity) and s not in (Sequence.EVEN_UNARY, Sequence.ODD_UNARY, Sequence.FULL_UNARY)
     ]
 
 
@@ -225,46 +282,34 @@ def fit_feature_expressions(
     return lb, ub
 
 
-def learn_for_instance(instance: Instance, expression, exp_symbols, training_size=None):
-    f = lambdify(exp_symbols, expression, "math")
+def learn_for_instance(instance: Instance, expression, training_size=None):
     print("expression", expression)
     if not instance.has_solutions():
         return
 
-    return learn_local_bounds(instance, expression, exp_symbols, training_size)
+    return learn_local_bounds(instance, expression, training_size)
 
 
 def learn_propositional(instance):
-    x, y = symbols("x y")
     bounding_expressions = dict()
-    for u in generate_unary_exp(x):
-        for key, val in learn_for_instance(instance, u, [x]).items():
-            bounding_expressions[(u,) + (key,)] = val
 
-    for b in generate_binary_expr(x, y):
-        for key, val in learn_for_instance(instance, b, [x, y]).items():
-            bounding_expressions[(b,) + (key,)] = val
-
-    for key, val in learn_for_instance(instance, sum, None).items():
-        bounding_expressions[(sum,) + key] = val
+    for exp in gen_expressions():
+        for key, val in learn_for_instance(instance, exp).items():
+            # noinspection PyTypeChecker
+            bounding_expressions[(exp,) + key] = val
 
     return bounding_expressions
 
 
-def learn_local_bounds(instance, expression, exp_symbols, training_size=None):
+def learn_local_bounds(instance, expression, training_size=None):
     local_bounds = dict()
+
     def compute_bounds(_indices):
-        if exp_symbols is not None:
-            expr = sympify(expression)
-            f = lambdify(exp_symbols, expr, "math")
-        else:
-            f = lambda *args: [expression(arg) for arg in args]
+        args = [instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices]
+        local_bounds[_indices] = expression.bounds(*args)
 
-        vals = f(*[instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices])
-        local_bounds[_indices] = min(vals), max(vals)
-
-    if exp_symbols is not None:
-        for indices in instance.all_local_indices(exp_symbols):
+    if expression.arity is not None:
+        for indices in instance.all_local_indices(expression.arity):
             compute_bounds(indices)
     else:
         type_shape = compute_shape([instance])
@@ -278,14 +323,14 @@ def learn_local_bounds(instance, expression, exp_symbols, training_size=None):
     return local_bounds
 
 
-def learn_for_expression(instances: list[Instance], expression, exp_symbols, training_size=None):
+def learn_for_expression(instances: list[Instance], expression, training_size=None):
     bounds_over_partitions_across_instances = dict()
     type_shape = compute_shape(instances)
     input_keys = compute_input_keys(instances)
     candidate_features = compute_candidate_features(instances)
     #
     all_partitions = gen_partitions(type_shape, input_keys)
-    all_sequences = gen_sequences(exp_symbols)
+    all_sequences = gen_sequences(expression.arity)
 
     print("expression", expression)
 
@@ -293,7 +338,7 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols, tra
         if not instance.has_solutions():
             continue
 
-        local_bounds = learn_local_bounds(instance, expression, exp_symbols, training_size)
+        local_bounds = learn_local_bounds(instance, expression, training_size)
 
         bounds_over_partitions = dict()
 
@@ -352,20 +397,12 @@ def learn_for_expression(instances: list[Instance], expression, exp_symbols, tra
 
 
 def learn(instances, training_size=None):
-    x, y = symbols("x y")
     bounding_expressions = dict()
-    for u in generate_unary_exp(x):
-        for key, val in learn_for_expression(instances, u, [x], training_size).items():
-            # noinspection PyTypeChecker
-            bounding_expressions[(u,) + key] = val
 
-    for b in generate_binary_expr(x, y):
-        for key, val in learn_for_expression(instances, b, [x, y], training_size).items():
+    for exp in gen_expressions():
+        for key, val in learn_for_expression(instances, exp, training_size).items():
             # noinspection PyTypeChecker
-            bounding_expressions[(b,) + key] = val
-
-    for key, val in learn_for_expression(instances, sum, None, training_size).items():
-        bounding_expressions[(sum,) + key] = val
+            bounding_expressions[(exp,) + key] = val
 
     return bounding_expressions
 
@@ -379,17 +416,10 @@ def ground_bound(instance, bound):
         return bound
 
 
-def encode_constraint(m, instance, indices, expr, exp_symbols, bounds):
+def encode_constraint(m, instance, indices, expression, bounds):
     lb, ub = bounds
-    cp_vars = [instance.cp_vars[index[0]][index[1:]] for index in indices]
-
-    try:
-        expr = sympify(expr)
-        f = lambdify(exp_symbols[:len(cp_vars)], sympify(expr), "math")
-    except SympifyError:
-        f = lambda *args: expr(args)
-
-    cpm_e = f(*cp_vars)
+    cp_vars = [np.array([instance.cp_vars[index[0]][index[1:]]]) for index in indices]
+    cpm_e = expression.evaluate(*cp_vars)
     if lb is not None:
         m += [cpm_e >= ground_bound(instance, lb)]
     if ub is not None:
@@ -397,20 +427,18 @@ def encode_constraint(m, instance, indices, expr, exp_symbols, bounds):
 
 
 def create_model(general_bounds, instance: Instance, propositional):
-    exp_symbols = symbols("x y")
-
     m = Model()
     total_constraints = 0
 
     if propositional:
         for (expr, indices), bounds in general_bounds.items():
-            encode_constraint(m, instance, indices, expr, exp_symbols, bounds)
+            encode_constraint(m, instance, indices, expr, bounds)
             total_constraints += 2
     else:
         for (expr, partitions, sequences), bounds in general_bounds.items():
             for partition_indices in partitions.generate_partition_indices(instance):
                 for indices in gen_index_groups(sequences, partition_indices):
-                    encode_constraint(m, instance, indices, expr, exp_symbols, bounds)
+                    encode_constraint(m, instance, indices, expr, bounds)
                     total_constraints += 2
 
     if instance.input_assignments:

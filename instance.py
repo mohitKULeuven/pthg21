@@ -174,13 +174,13 @@ class Instance:
             offset += length
         return d
 
-    def all_local_indices(self, exp_symbols):
+    def all_local_indices(self, arity):
         for name in self.tensors_dim:
             index_pool = [
                 (name,) + indices
                 for indices in np.ndindex(*self.tensors_dim[name])
             ]
-            yield from itertools.combinations(index_pool, len(exp_symbols))
+            yield from itertools.combinations(index_pool, arity)
 
     def example_count(self, positive):
         data = self.pos_data if positive else self.neg_data
