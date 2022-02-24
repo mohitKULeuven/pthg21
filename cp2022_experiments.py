@@ -143,14 +143,13 @@ def nurse_rostering(training_size):
 if __name__ == "__main__":
     # types = [l for l in range(11, 17) if l != 9]
     # types = [int(sys.argv[1])]
-    training_size = [1]
+    training_size = [1, 5, 10]
 
     ###### sudoku ######
-    instances = [0]
+    instances = [0, 1]
     iterations = list(
         it.product(training_size, instances)
     )[:1]
-    print(iterations)
     pool = Pool(processes=len(iterations))
     pool.starmap(sudoku, iterations)
     ####################

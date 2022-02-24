@@ -328,7 +328,7 @@ def solutions(model: Model, size):
 #     return sols
 
 
-def statistic(model1, model2, instance: Instance, size=1000):
+def statistic(model1, model2, instance: Instance, size=100):
     sols = solutions(model1, size)
     print(f"Number of solutions: {len(sols)}")
     # print(len(sols), type(sols), type(sols[0]), type(sols[0][0]))

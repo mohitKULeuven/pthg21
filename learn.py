@@ -379,16 +379,27 @@ def learn_for_expression(instances: list[Instance], expression, training_size=No
 
     # print([i for i, ins in enumerate(instances) if ins.has_solutions()])
 
-    for partitions in all_partitions:
+    for i, partitions in enumerate(all_partitions):
         for sequence in all_sequences:
             bounds = {instance.number:
                           bounds_over_partitions_across_instances[instance.number][partitions][sequence]
                       for instance in instances if instance.has_solutions()}
             # print(bounds)
             symbolic_bounds = fit_feature_expressions(bounds, candidate_features)
-            if sequence == Sequence.SEQUENCE_PAIRS and bounding_expressions[
-                (partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+            ##### for filtering redundant partitions and sequences ####
+            if i > 0 and (all_partitions[0], sequence) in bounding_expressions and \
+                    bounding_expressions[
+                        (all_partitions[0], sequence)] == symbolic_bounds:
                 continue
+            if sequence == Sequence.SEQUENCE_PAIRS and (partitions, Sequence.ALL_PAIRS) in bounding_expressions and \
+                    bounding_expressions[
+                        (partitions, Sequence.ALL_PAIRS)] == symbolic_bounds:
+                continue
+            if sequence == Sequence.SEQUENCE_PAIRS and (all_partitions[0], Sequence.ALL_PAIRS) in bounding_expressions and \
+                    bounding_expressions[
+                        (all_partitions[0], Sequence.ALL_PAIRS)] == symbolic_bounds:
+                continue
+            ###################
             bounding_expressions[(partitions, sequence)] = symbolic_bounds
             print("\t", partitions, sequence, bounding_expressions[(partitions, sequence)])
 
