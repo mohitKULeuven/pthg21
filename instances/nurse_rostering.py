@@ -34,7 +34,7 @@ def nurse_rostering_model(instance:Instance):
     schedule = instance.cp_vars["array"]
     m = Model()
     m += [sum(schedule[i, :]) >= days-4 for i in range(len(schedule))]
-    m += [sum(schedule[i, :]) <= days-1 for i in range(len(schedule))]
+    m += [sum(schedule[i, :]) <= days-2 for i in range(len(schedule))]
     m += [sum(schedule[:, i]) >= nurses-3 for i in range(len(schedule[0]))]
     m += [sum(schedule[:, i]) <= nurses-1 for i in range(len(schedule[0]))]
 

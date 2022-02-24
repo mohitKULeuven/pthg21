@@ -1,6 +1,4 @@
 import json
-import numpy as np
-import cpmpy
 import glob
 import csv
 import learner
@@ -8,7 +6,7 @@ import pickle
 import logging
 import time
 from multiprocessing import Pool
-import itertools as it
+import argparse
 
 from instance import Instance
 from learn import learn, create_model
@@ -19,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def sudoku(training_size):
+    print("running Sudoku")
     t = 6
     with open(f"type_{t:02d}_training_size_{training_size}.csv", "w") as csv_file:
         filewriter = csv.writer(csv_file, delimiter=",")
@@ -80,12 +79,13 @@ def sudoku(training_size):
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))
     # csvfile.close()
 
+
 def nurse_rostering(training_size):
-    nurses = 5
-    days = 7
-    train_instance = nurse_rostering_instance(nurses, days)
-    t = 21
-    with open(f"type_nurses_training_size_{training_size}_instance_{train_instance.number}.csv", "w") as csv_file:
+    print("running Nurses")
+    train_instance1 = nurse_rostering_instance(5, 7)
+    train_instance2 = nurse_rostering_instance(6, 10)
+    # t = 21
+    with open(f"type_nurses_training_size_{training_size}.csv", "w") as csv_file:
         filewriter = csv.writer(csv_file, delimiter=",")
         filewriter.writerow(
             [
@@ -98,17 +98,17 @@ def nurse_rostering(training_size):
                 "testing_time",
                 "precision",
                 "recall",
-                "perc_pos",
-                "perc_neg", "total", "correct_objective", "count"
+                # "perc_pos",
+                # "perc_neg", "total", "correct_objective", "count"
             ]
         )
         start = time.time()
-        bounding_expressions = learn([train_instance], training_size)
+        bounding_expressions = learn([train_instance1, train_instance2], training_size)
         learning_time = time.time() - start
 
-        test_instance = nurse_rostering_instance(10, 30)
+        test_instance = nurse_rostering_instance(10, 14)
 
-        for instance in [train_instance, test_instance]:
+        for instance in [train_instance1, train_instance2, test_instance]:
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
             print(f"number of constraints: {len(learned_model.constraints)}")
@@ -117,14 +117,14 @@ def nurse_rostering(training_size):
             precision, recall = learner.compare_models(learned_model, nurse_rostering_model(instance), instance)
             print(f"precision: {int(precision)}%  |  recall:  {int(recall)}%")
 
-            perc_pos, perc_neg = None, None
-            if instance.has_solutions():
-                perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
-                print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
+            # perc_pos, perc_neg = None, None
+            # if instance.has_solutions():
+            #     perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
+            #     print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
 
             filewriter.writerow(
                 [
-                    t,
+                    "nurses",
                     instance.number,
                     training_size,
                     total_constraints,
@@ -133,25 +133,23 @@ def nurse_rostering(training_size):
                     time.time() - start_test,
                     precision,
                     recall,
-                    perc_pos,
-                    perc_neg, total, co, cnt
+                    # perc_pos,
+                    # perc_neg, total, co, cnt
                 ]
             )
-
 
 
 if __name__ == "__main__":
     # types = [l for l in range(11, 17) if l != 9]
     # types = [int(sys.argv[1])]
     training_size = [1, 5, 10]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--exp", type=str)
+    parser.add_argument("-s", "--training_size", type=int, nargs='*', default=[1, 5, 10])
+    args = parser.parse_args()
 
-    ###### sudoku ######
     pool = Pool(processes=len(training_size))
-    pool.map(sudoku, training_size)
-    ####################
-
-    ###### nurses ######
-    # pool = Pool(processes=len(training_size))
-    # pool.map(nurse_rostering, training_size)
-    ####################
-
+    if args.exp == "sudoku":
+        pool.map(sudoku, training_size)
+    else:
+        pool.map(nurse_rostering, training_size)
