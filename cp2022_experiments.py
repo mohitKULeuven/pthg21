@@ -100,8 +100,8 @@ if __name__ == "__main__":
         for file in files:
             with open(file) as f:
                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), ptype))
-        if args.exp == "magic":
-            instances = [instances[i] for i in [0,3,5]]
+        if args.exp == "magic" or args.exp == "graph":
+            instances = [instances[i] for i in [0, 3, 5]]
         iterations = list(
             it.product(
                 [instances[:3]],
