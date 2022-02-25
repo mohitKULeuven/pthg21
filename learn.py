@@ -52,7 +52,10 @@ class SympyExpression(Expression):
     def __init__(self, exp, exp_symbols):
         self.exp = exp
         self.exp_symbols = exp_symbols
-        self.f = lambdify(exp_symbols, exp, "math")
+
+    @property
+    def f(self):
+        return lambdify(self.exp_symbols, self.exp, "math")
 
     @property
     def arity(self):
