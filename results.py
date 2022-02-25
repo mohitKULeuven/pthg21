@@ -6,7 +6,7 @@ from mpl_toolkits import mplot3d
 import os
 import glob
 
-plt.rcParams.update({"font.size": 12})
+plt.rcParams.update({"font.size": 24})
 
 def std_err(x):
     return np.std(x) / np.sqrt(len(x))
@@ -102,36 +102,48 @@ def aggr_acc(data, stat, aggregate, tag="time", kind="bar"):
     )
 ##########################################
 
-def aggr_competition_data(path, types, stat, aggregate, tag="time", kind="bar"):
+def aggr_competition_data(path, types, stat, aggregate, tag="filter", kind="bar"):
     all_csv_files = []
     for t in types:
-        # print(path + f"type{t:02d}.csv")
-        if os.path.exists(path + f"type_{t:02d}_propositional.csv"):
-            # path + f"type{t:02d}.csv"
-            all_csv_files.append(path + f"type_{t:02d}_propositional.csv")
+        # tmp_path = path + f"type_{t:02d}_*_True.csv"
+        all_csv_files.extend(sorted(glob.glob(path + f"type_{t:02d}_*_True.csv")))
+        # all_csv_files.append(path + f"type_{t:02d}_*.csv")
     data = pd.concat((pd.read_csv(f) for f in all_csv_files))
 
     mean_table = pd.pivot_table(
         data, aggregate, index=stat, aggfunc=np.mean
     )
     line_mean_df = pd.DataFrame(mean_table.to_records())
+    line_mean_df["type"].replace({1: "Graph Coloring", 6: "Sudoku", 20:"N-Queens", 21: "Magic Square", 22:"Nurse Rostering"}, inplace=True)
     print(line_mean_df)
 
-    fig, ax = plt.subplots(1, 1, sharey="row", figsize=(18, 6))
+    # learned = sum(line_mean_df["learned_constraints"])
+    # total = sum(line_mean_df["total_constraints"])
+    # print((total-learned)*100/total)
+    #
+    # fig, ax = plt.subplots(1, 1, figsize=(25, 5))
+    # ax.set_yscale('log')
+    # ax.set_xticklabels(["Graph Coloring","Sudoku","N-Queens","Magic Square","Nurse Rostering"])
+    # ax.tick_params(axis='x', labelrotation=90)
+    # line_mean_df.plot(x=stat[0], y=aggregate, ax=ax, kind=kind)
 
-    line_mean_df.plot(x=stat[0], y=aggregate, ax=ax, kind=kind)
-
-    plt.savefig(
-        path+tag+".png",
-        bbox_inches="tight",
-        # pad_inches=0.35,
-    )
+    # plt.savefig(
+    #     path+tag+".png",
+    #     bbox_inches="tight",
+    #     # pad_inches=0.35,
+    # )
+    #
+    # plt.savefig(
+    #     path+tag+".pdf",
+    #     bbox_inches="tight",
+    #     # pad_inches=0.35,
+    # )
 
 
 if __name__ == "__main__":
-    path = "results/type_level_neg_details/"
-    types = [l for l in range(1, 17) if l not in [9]]
-    aggr_competition_data(path, types, ["type"], ["precision", "recall"])
+    path = "final_results/"
+    types = [1,6,20,21,22]
+    aggr_competition_data(path, types, ["type"], ["learning_time", "testing_time"])
     # aggr_competition_data(path, types, ["type"], ["perc_pos", "perc_neg"])
 
     # all_csv_files = []

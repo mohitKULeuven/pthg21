@@ -16,6 +16,33 @@ from experiments import true_model
 
 logger = logging.getLogger(__name__)
 
+def experiment_time_taken(instances, training_size, symbolic=True):
+    ptype = instances[0].problem_type
+    with open(f"type_{ptype:02d}_training_size_{training_size}_symbolic_{symbolic}_time.csv", "w") as csv_file:
+        filewriter = csv.writer(csv_file, delimiter=",")
+        filewriter.writerow(
+            [
+                "type",
+                "instance",
+                "training_size",
+                "total_constraints",
+                "learned_constraints",
+                "learning_time",
+                "testing_time",
+                "precision",
+                "recall",
+            ]
+        )
+        start = time.time()
+        bounding_expressions = learn(instances[:1], training_size, symbolic)
+        learning_time = time.time() - start
+        filewriter.writerow(
+            [
+                ptype,
+                training_size,
+                learning_time,
+            ]
+        )
 
 def experiments(instances, training_size, symbolic=True):
     ptype = instances[0].problem_type
@@ -82,7 +109,7 @@ if __name__ == "__main__":
             it.product(
                 [instances[:3]],
                 args.training_size,
-                symbolic,
+                # symbolic,
             )
         )
     else:
@@ -109,4 +136,4 @@ if __name__ == "__main__":
             )
         )
     pool = Pool(processes=len(iterations))
-    pool.starmap(experiments, iterations)
+    pool.starmap(experiment_time_taken, iterations)
