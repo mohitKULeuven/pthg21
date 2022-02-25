@@ -67,7 +67,7 @@ if __name__ == "__main__":
     # types = [int(sys.argv[1])]
     parser = argparse.ArgumentParser()
     parser.add_argument("-exp", type=str)
-    parser.add_argument("--training_size", type=int, nargs='*', default=[5])
+    parser.add_argument("--training_size", type=int, nargs='*', default=[1, 5, 10])
 
     args = parser.parse_args()
 
@@ -80,7 +80,7 @@ if __name__ == "__main__":
         symbolic = [True, False]
         iterations = list(
             it.product(
-                [instances],
+                [instances[:3]],
                 args.training_size,
                 symbolic,
             )
@@ -102,7 +102,7 @@ if __name__ == "__main__":
                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), ptype))
         iterations = list(
             it.product(
-                [instances],
+                [instances[:3]],
                 args.training_size,
             )
         )
