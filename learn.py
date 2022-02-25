@@ -242,42 +242,57 @@ def compute_candidate_features(instances: list[Instance]) -> dict[FeatureName, d
     return {k: {instance.number: instance.constants[k] for instance in instances} for k in instances[0].constants}
 
 
+def fit_feature_expressions_single(
+        is_lb,
+        bounds: dict[InstanceNumber, tuple],
+        candidate_features: dict[FeatureName, dict[InstanceNumber, Value]],
+        threshold=1
+):
+    if is_lb:
+        bound = min([bounds[instance_number][0] for instance_number in bounds])
+        if bound == float("-inf"):
+            return None
+        min_error = [bounds[instance_number][0] - bound for instance_number in bounds]
+    else:
+        bound = max([bounds[instance_number][1] for instance_number in bounds])
+        if bound == float("inf"):
+            return None
+        min_error = [bound - bounds[instance_number][1] for instance_number in bounds]
+
+    for f, values in candidate_features.items():
+        if is_lb:
+            bias = min(
+                [bounds[instance_number][0] - values[instance_number]
+                 for instance_number in bounds]
+            )
+            error = [bounds[instance_number][0] - values[instance_number] - bias for instance_number in bounds]
+
+        else:
+            bias = max(
+                [bounds[instance_number][1] - values[instance_number]
+                 for instance_number in bounds]
+            )
+            error = [values[instance_number] + bias - bounds[instance_number][1] for instance_number in bounds]
+
+        if sum(error) < sum(min_error):
+            min_error = error
+            bound = bias + sympy.S(f)
+
+    if sum(min_error) / len(min_error) > threshold:
+        return None
+
+    return bound
+
+
 def fit_feature_expressions(
         bounds: dict[InstanceNumber, tuple],
         candidate_features: dict[FeatureName, dict[InstanceNumber, Value]],
         threshold=1
 ):
-    lb = min([bounds[instance_number][0] for instance_number in bounds])
-    ub = max([bounds[instance_number][1] for instance_number in bounds])
-    min_error_lb = [bounds[instance_number][0] - lb for instance_number in bounds]
-    min_error_ub = [ub - bounds[instance_number][1] for instance_number in bounds]
-
-    for f, values in candidate_features.items():
-        bias_lb = min(
-            [bounds[instance_number][0] - values[instance_number]
-             for instance_number in bounds]
-        )
-        error = [bounds[instance_number][0] - values[instance_number] - bias_lb for instance_number in bounds]
-        if sum(error) < sum(min_error_lb):
-            min_error_lb = error
-            lb = bias_lb + sympy.S(f)
-
-        bias_ub = max(
-            [bounds[instance_number][1] - values[instance_number]
-             for instance_number in bounds]
-        )
-        error = [values[instance_number] + bias_ub - bounds[instance_number][1] for instance_number in bounds]
-        if sum(error) < sum(min_error_ub):
-            min_error_ub = error
-            ub = bias_ub + sympy.S(f)
-
-    cv = lambda x: sum(x) / len(x)
-    if cv(min_error_lb) > threshold:
-        lb = None
-    if cv(min_error_ub) > threshold:
-        ub = None
-    # print(min_error_lb, min_error_ub)
-    return lb, ub
+    return (
+        fit_feature_expressions_single(True, bounds, candidate_features, threshold),
+        fit_feature_expressions_single(False, bounds, candidate_features, threshold)
+    )
 
 
 def learn_for_instance(instance: Instance, expression, training_size=None):
@@ -301,7 +316,7 @@ def learn_propositional(instance):
 
 def find_bounds(indices, expression, instance: Instance):
     cp_vars = [np.array([instance.cp_vars[index[0]][index[1:]]]) for index in indices]
-    objective = expression.evaluate(*cp_vars)
+    objective = expression.evaluate(*cp_vars)[0]
 
     def solve(is_lb):
         m = Model()
@@ -323,9 +338,9 @@ def learn_local_bounds(instance, expression, training_size=None):
         lb, ub = expression.bounds(*args)
         min_lb, max_ub = find_bounds(_indices, expression, instance)
         if lb == min_lb:
-            lb = float('-inf')
+            lb = float("-inf")
         if ub == max_ub:
-            ub = float('inf')
+            ub = float("inf")
         local_bounds[_indices] = lb, ub
 
     if expression.arity is not None:
