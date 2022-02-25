@@ -142,14 +142,13 @@ def nurse_rostering(training_size):
 if __name__ == "__main__":
     # types = [l for l in range(11, 17) if l != 9]
     # types = [int(sys.argv[1])]
-    training_size = [1, 5, 10]
     parser = argparse.ArgumentParser()
     parser.add_argument("--exp", type=str)
     parser.add_argument("-s", "--training_size", type=int, nargs='*', default=[1, 5, 10])
     args = parser.parse_args()
 
-    pool = Pool(processes=len(training_size))
+    pool = Pool(processes=len(args.training_size))
     if args.exp == "sudoku":
-        pool.map(sudoku, training_size)
+        pool.map(sudoku, args.training_size)
     else:
-        pool.map(nurse_rostering, training_size)
+        pool.map(nurse_rostering, args.training_size)

@@ -9,6 +9,7 @@ import logging
 import time
 from multiprocessing import Pool
 import argparse
+import itertools as it
 
 from instance import Instance
 from learn import learn, create_model, learn_propositional
@@ -45,6 +46,7 @@ def flatten(l):
     flatten_rec(l)
     return result
 
+
 def true_model(t, instance):
     if t == 1:
         return model_type01(instance)
@@ -76,7 +78,6 @@ def true_model(t, instance):
         return model_type15(instance)
     elif t == 16:
         return model_type16(instance)
-
 
 
 def propositional_level_experiment(t):
@@ -140,9 +141,9 @@ def propositional_level_experiment(t):
     # csvfile.close()
 
 
-def generalized_learning_experiment(t):
+def generalized_learning_experiment(t, ins, training_size=None):
     print(f"type{t}")
-    with open(f"type {t:02d}.csv", "w") as csv_file:
+    with open(f"type {t:02d}_training_size_{training_size}.csv", "w") as csv_file:
         filewriter = csv.writer(csv_file, delimiter=",")
         filewriter.writerow(
             [
@@ -154,8 +155,8 @@ def generalized_learning_experiment(t):
                 "testing_time",
                 "precision",
                 "recall",
-                "perc_pos",
-                "perc_neg", "total", "correct_objective", "count"
+                # "perc_pos",
+                # "perc_neg", "total", "correct_objective", "count"
             ]
         )
         path = f"instances/type{t:02d}/inst*.json"
@@ -165,11 +166,11 @@ def generalized_learning_experiment(t):
             with open(file) as f:
                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), t))
         start = time.time()
-        bounding_expressions = learn(instances)
+        bounding_expressions = learn(instances, training_size)
         learning_time = time.time() - start
         pickleVar = bounding_expressions
 
-        for instance in instances:
+        for instance in instances[ins:ins + 1]:
             # len_pos, len_neg = 0, 0
             print(f"instance {instance.number}")
             learned_model, total_constraints = create_model(bounding_expressions, instance, propositional=False)
@@ -180,10 +181,10 @@ def generalized_learning_experiment(t):
             precision, recall = learner.compare_models(learned_model, true_model(t, instance), instance)
             print(f"precision: {int(precision)}%  |  recall:  {int(recall)}%")
 
-            perc_pos, perc_neg = None, None
-            if instance.has_solutions():
-                perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
-                print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
+            # perc_pos, perc_neg = None, None
+            # if instance.has_solutions():
+            #     perc_pos, perc_neg, cnt, co, total = instance.check(learned_model)
+            #     print(f"pos: {int(perc_pos)}%  |  neg:  {int(perc_neg)}%")
 
             filewriter.writerow(
                 [
@@ -195,8 +196,8 @@ def generalized_learning_experiment(t):
                     time.time() - start_test,
                     precision,
                     recall,
-                    perc_pos,
-                    perc_neg, total, co, cnt
+                    # perc_pos,
+                    # perc_neg, total, co, cnt
                 ]
             )
     pickle.dump(pickleVar, open(f"type{t:02d}_bound_expressions.pickle", "wb"))
@@ -227,14 +228,17 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--type", type=int)
     parser.add_argument("-p", "--propositional", action="store_true")
-    parser.add_argument("-t", "--test", action="store_true")
+    parser.add_argument("-s", "--training_size", type=int, nargs='*', default=[1, 5, 10])
+    parser.add_argument("-i", "--instances", type=int, nargs='*', default=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
     args = parser.parse_args()
 
+    iterations = list(
+        it.product(
+            [args.type],
+            args.training_size,
+            args.instances,
+        )
+    )
     method = propositional_level_experiment if args.propositional else generalized_learning_experiment
-
-    if args.test:
-        method(args.type)
-    else:
-        types = [l for l in range(1, 17) if l != 9]
-        pool = Pool(processes=len(types))
-        pool.map(method, types)
+    pool = Pool(processes=int(len(iterations)/2))
+    pool.starmap(method, iterations)

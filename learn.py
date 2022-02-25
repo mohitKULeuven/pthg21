@@ -247,8 +247,6 @@ def fit_feature_expressions(
         candidate_features: dict[FeatureName, dict[InstanceNumber, Value]],
         threshold=1
 ):
-    # print(bounds, candidate_features)
-    # print(bounds)
     lb = min([bounds[instance_number][0] for instance_number in bounds])
     ub = max([bounds[instance_number][1] for instance_number in bounds])
     min_error_lb = [bounds[instance_number][0] - lb for instance_number in bounds]
@@ -432,6 +430,8 @@ def encode_constraint(m, instance, indices, expression, bounds):
     lb, ub = bounds
     # print(indices)
     cp_vars = [np.array([instance.cp_vars[index[0]][index[1:]]]) for index in indices]
+    # print(*cp_vars)
+    # m += [sum([*cp_vars]) >= 0]
     cpm_e = expression.evaluate(*cp_vars)[0]
     if lb is not None:
         m += [cpm_e >= ground_bound(instance, lb)]
