@@ -37,6 +37,24 @@ def load_input_partitions(type_number, input_data, constants):
                         partition.append(("array", k, l))
                 partitions["blocks"].append(partition)
         return partitions
+    elif type_number == 20:
+        partitions = {"diagonals": []}
+        size = constants["size"]
+        # grid = np.indices((size, size))
+        matrix = np.empty([size, size], dtype=object)
+        for i in range(size):
+            for j in range(size):
+                matrix[i, j] = (i, j)
+
+        diags = [matrix[::-1, :].diagonal(i) for i in range(1-size, size)]
+        diags.extend(matrix.diagonal(i) for i in range(size-1, -size, -1))
+        for partition in diags:
+            partition = sorted([("board", i, j) for i,j in partition])
+            # partition = sorted(partition)
+            if len(partition)==1:
+                continue
+            partitions["diagonals"].append(partition)
+        return partitions
 
     return {}
 

@@ -390,14 +390,12 @@ def learn_for_expression(instances: list[Instance], expression, symbolic, traini
 
             # all indices in a specific column
             for partition_indices in partitions.generate_partition_indices(instance):
-                # print(partition_indices, "\t")
                 for sequence in all_sequences:  # all-pairs, sequential values
                     partition_sequence_bounds = [
                         local_bounds[index_group]
                         for index_group in gen_index_groups(sequence, partition_indices)
                         # one pair of a specific column
                     ]
-
                     partition_bounds[sequence].append((
                         min([lb for lb, _ in partition_sequence_bounds]),
                         max([ub for _, ub in partition_sequence_bounds])
