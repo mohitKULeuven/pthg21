@@ -5,10 +5,10 @@ from instance import Instance
 import numpy as np
 from learner import solutions
 
-def nurse_rostering_instance(nurses=5, days=7):
-    schedule_instance = Instance(nurses, {"inputData":{}, "formatTemplate":{}, "solutions": None, "tests":{}}, 21)
-    schedule_instance.input_data = {'nurses': nurses, 'days': days}
-    schedule_instance.constants = {'nurses': nurses, 'days': days}
+def nurse_rostering_instance(nurses=7, days=7, minNurses=5, maxNurses=7):
+    schedule_instance = Instance(nurses, {"inputData":{}, "formatTemplate":{}, "solutions": None, "tests":{}}, 22)
+    schedule_instance.input_data = {'minNurses': minNurses, 'maxNurses': maxNurses}
+    schedule_instance.constants = {'minNurses': minNurses, 'maxNurses': maxNurses}
     schedule_instance.tensors_dim = {'array': (nurses, days)}
     schedule_instance.var_lbs = {'array': np.zeros([nurses, days]).astype(int)}
     schedule_instance.var_ubs = {'array': np.ones([nurses, days]).astype(int)}
@@ -19,9 +19,11 @@ def nurse_rostering_instance(nurses=5, days=7):
     # print(schedule_instance.var_lbs, schedule_instance.var_ubs, schedule_instance.tensors_dim)
     m = nurse_rostering_model(schedule_instance)
     schedule_instance.pos_data = []
-    for solution in solutions(m, 100):
+    for solution in solutions(m, schedule_instance, 10):
         solution = np.reshape(solution, (nurses, days))
         schedule_instance.pos_data.append({'array': solution})
+    if not schedule_instance.pos_data:
+        print(nurses, days, minNurses, maxNurses)
     schedule_instance.training_data = {
         k: np.array([d[k] for d in schedule_instance.pos_data])
         for k in schedule_instance.tensors_dim
@@ -29,15 +31,14 @@ def nurse_rostering_instance(nurses=5, days=7):
     return schedule_instance
 
 def nurse_rostering_model(instance:Instance):
-    nurses=instance.input_data['nurses']
-    days=instance.input_data['days']
+    minNurses = instance.input_data['minNurses']
+    maxNurses = instance.input_data['maxNurses']
     schedule = instance.cp_vars["array"]
     m = Model()
-    m += [sum(schedule[i, :]) >= days-4 for i in range(len(schedule))]
-    m += [sum(schedule[i, :]) <= days-2 for i in range(len(schedule))]
-    m += [sum(schedule[:, i]) >= nurses-3 for i in range(len(schedule[0]))]
-    m += [sum(schedule[:, i]) <= nurses-1 for i in range(len(schedule[0]))]
-
+    m += [sum(schedule[i, :]) >= 0 for i in range(len(schedule))]
+    m += [sum(schedule[i, :]) <= 5 for i in range(len(schedule))]
+    m += [sum(schedule[:, i]) >= minNurses for i in range(len(schedule[0]))]
+    m += [sum(schedule[:, i]) <= maxNurses for i in range(len(schedule[0]))]
     return m
 
 

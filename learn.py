@@ -337,6 +337,8 @@ def learn_local_bounds(instance, expression, training_size=None):
     local_bounds = dict()
 
     def compute_bounds(_indices):
+        # print(_indices)
+        # print(instance.training_data)
         args = [instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices]
         lb, ub = expression.bounds(*args)
         min_lb, max_ub = find_bounds(_indices, expression, instance)
@@ -361,11 +363,13 @@ def learn_local_bounds(instance, expression, training_size=None):
     return local_bounds
 
 
-def learn_for_expression(instances: list[Instance], expression, training_size=None):
+def learn_for_expression(instances: list[Instance], expression, symbolic, training_size=None):
     bounds_over_partitions_across_instances = dict()
     type_shape = compute_shape(instances)
     input_keys = compute_input_keys(instances)
-    candidate_features = compute_candidate_features(instances)
+    candidate_features = {}
+    if symbolic:
+        candidate_features = compute_candidate_features(instances)
     #
     all_partitions = gen_partitions(type_shape, input_keys)
     all_sequences = gen_sequences(expression.arity)
@@ -445,11 +449,11 @@ def learn_for_expression(instances: list[Instance], expression, training_size=No
     return bounding_expressions
 
 
-def learn(instances, training_size=None):
+def learn(instances, training_size=None, symbolic=True):
     bounding_expressions = dict()
 
     for exp in gen_expressions():
-        for key, val in learn_for_expression(instances, exp, training_size).items():
+        for key, val in learn_for_expression(instances, exp, symbolic, training_size).items():
             # noinspection PyTypeChecker
             bounding_expressions[(exp,) + key] = val
 
