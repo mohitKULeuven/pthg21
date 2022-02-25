@@ -299,12 +299,34 @@ def learn_propositional(instance):
     return bounding_expressions
 
 
+def find_bounds(indices, expression, instance: Instance):
+    cp_vars = [np.array([instance.cp_vars[index[0]][index[1:]]]) for index in indices]
+    objective = expression.evaluate(*cp_vars)
+
+    def solve(is_lb):
+        m = Model()
+        if is_lb:
+            m.minimize(objective)
+        else:
+            m.maximize(objective)
+        m.solve()
+        return m.objective_value()
+
+    return solve(True), solve(False)
+
+
 def learn_local_bounds(instance, expression, training_size=None):
     local_bounds = dict()
 
     def compute_bounds(_indices):
         args = [instance.training_data[ind[0]][(slice(0, training_size),) + ind[1:]] for ind in _indices]
-        local_bounds[_indices] = expression.bounds(*args)
+        lb, ub = expression.bounds(*args)
+        min_lb, max_ub = find_bounds(_indices, expression, instance)
+        if lb == min_lb:
+            lb = float('-inf')
+        if ub == max_ub:
+            ub = float('inf')
+        local_bounds[_indices] = lb, ub
 
     if expression.arity is not None:
         for indices in instance.all_local_indices(expression.arity):
