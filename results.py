@@ -102,17 +102,71 @@ def aggr_acc(data, stat, aggregate, tag="time", kind="bar"):
     )
 ##########################################
 
+def aggr_competition_data_time(path, types, stat, aggregate, tag="filter", kind="bar"):
+    all_csv_files = []
+    for t in types:
+        all_csv_files.extend(sorted(glob.glob(path + f"type_{t:02d}_*.csv")))
+    data = pd.concat((pd.read_csv(f) for f in all_csv_files))
+    data = data.rename({'instance': 'training_size', 'training_size': 'time_taken'}, axis='columns')
+    data["type"].replace(
+        {1: "Graph Coloring", 6: "Sudoku", 20: "N-Queens", 21: "Magic Square", 22: "Nurse Rostering"}, inplace=True)
+    # print(data)
+    mean_table = pd.pivot_table(
+        data, aggregate, index=stat[0], columns=stat[1], aggfunc=np.mean
+    )
+    mean_table = pd.pivot_table(
+        data, aggregate, index=stat, aggfunc=np.mean
+    )
+    line_mean_df = pd.DataFrame(mean_table.to_records()).pivot(
+        index=stat[1],
+        columns=stat[0],
+        values=aggregate[0],
+    )
+    print(line_mean_df)
+
+    fig, ax = plt.subplots(1, 1, figsize=(25, 5))
+    ax.set_yscale('log')
+    # ax.set_xticklabels(["Graph Coloring","Sudoku","N-Queens","Magic Square","Nurse Rostering"])
+    ax.set_xticks([1, 10, 50, 100])
+    ax.set_ylabel('Time Taken (in seconds)')
+    line_mean_df.plot(rot=0, ax=ax, kind=kind)
+    # line_mean_df.plot(x=stat[0], y=aggregate, ax=ax, kind=kind)
+    ax.get_legend().remove()
+    handles, labels = ax.get_legend_handles_labels()
+    lgd = fig.legend(
+        handles=handles,
+        labels=labels,
+        loc="upper center",
+        ncol=5,
+        bbox_to_anchor=(0.38, 1.08, 0.2, 0),
+    )
+
+    plt.savefig(
+        path+tag+".png",
+        bbox_extra_artists=(lgd,),
+        bbox_inches="tight",
+        # pad_inches=0.35,
+    )
+    plt.savefig(
+        path + tag + ".pdf",
+        bbox_extra_artists=(lgd,),
+        bbox_inches="tight",
+        # pad_inches=0.35,
+    )
+
+
 def aggr_competition_data(path, types, stat, aggregate, tag="filter", kind="bar"):
     all_csv_files = []
     for t in types:
         # tmp_path = path + f"type_{t:02d}_*_True.csv"
-        all_csv_files.extend(sorted(glob.glob(path + f"type_{t:02d}_*_True.csv")))
+        all_csv_files.extend(sorted(glob.glob(path + f"type_{t:02d}_*.csv")))
         # all_csv_files.append(path + f"type_{t:02d}_*.csv")
     data = pd.concat((pd.read_csv(f) for f in all_csv_files))
 
     mean_table = pd.pivot_table(
         data, aggregate, index=stat, aggfunc=np.mean
     )
+
     line_mean_df = pd.DataFrame(mean_table.to_records())
     line_mean_df["type"].replace({1: "Graph Coloring", 6: "Sudoku", 20:"N-Queens", 21: "Magic Square", 22:"Nurse Rostering"}, inplace=True)
     print(line_mean_df)
@@ -120,30 +174,33 @@ def aggr_competition_data(path, types, stat, aggregate, tag="filter", kind="bar"
     # learned = sum(line_mean_df["learned_constraints"])
     # total = sum(line_mean_df["total_constraints"])
     # print((total-learned)*100/total)
-    #
-    # fig, ax = plt.subplots(1, 1, figsize=(25, 5))
-    # ax.set_yscale('log')
-    # ax.set_xticklabels(["Graph Coloring","Sudoku","N-Queens","Magic Square","Nurse Rostering"])
-    # ax.tick_params(axis='x', labelrotation=90)
-    # line_mean_df.plot(x=stat[0], y=aggregate, ax=ax, kind=kind)
 
-    # plt.savefig(
-    #     path+tag+".png",
-    #     bbox_inches="tight",
-    #     # pad_inches=0.35,
-    # )
+    fig, ax = plt.subplots(1, 1, figsize=(18, 6))
+    ax.set_yscale('log')
+    # ax.set_xticklabels(["Graph Coloring","Sudoku","N-Queens","Magic Square","Nurse Rostering"])
+
+    line_mean_df.plot(x=stat[0], y=aggregate, ax=ax, kind=kind)
+    ax.set_xlabel("")
+    ax.tick_params(axis='x', labelrotation=0)
+
+    plt.savefig(
+        path+tag+".png",
+        bbox_inches="tight",
+        # pad_inches=0.35,
+    )
     #
-    # plt.savefig(
-    #     path+tag+".pdf",
-    #     bbox_inches="tight",
-    #     # pad_inches=0.35,
-    # )
+    plt.savefig(
+        path+tag+".pdf",
+        bbox_inches="tight",
+        # pad_inches=0.35,
+    )
 
 
 if __name__ == "__main__":
     path = "final_results/"
     types = [1,6,20,21,22]
-    aggr_competition_data(path, types, ["type"], ["learning_time", "testing_time"])
+    aggr_competition_data(path, types, ["type"], ["total_constraints", "learned_constraints"])
+    # aggr_competition_data(path, types, ["type", "instance"], ["training_size"], tag="time", kind="line")
     # aggr_competition_data(path, types, ["type"], ["perc_pos", "perc_neg"])
 
     # all_csv_files = []

@@ -23,19 +23,14 @@ def experiment_time_taken(instances, training_size, symbolic=True):
         filewriter.writerow(
             [
                 "type",
-                "instance",
                 "training_size",
-                "total_constraints",
-                "learned_constraints",
                 "learning_time",
-                "testing_time",
-                "precision",
-                "recall",
             ]
         )
         start = time.time()
         bounding_expressions = learn(instances[:1], training_size, symbolic)
         learning_time = time.time() - start
+        print(learning_time)
         filewriter.writerow(
             [
                 ptype,
@@ -129,11 +124,16 @@ if __name__ == "__main__":
                 instances.append(Instance(int(file.split("/")[-1].split(".")[0][8:]), json.load(f), ptype))
         if args.exp == "magic" or args.exp == "graph":
             instances = [instances[i] for i in [0, 3, 5]]
+        if args.exp == "queens":
+            instances = [instances[i] for i in [4, 5, 6]]
         iterations = list(
             it.product(
                 [instances[:3]],
                 args.training_size,
             )
         )
+    for instance in instances:
+        print(len(instance.pos_data))
+
     pool = Pool(processes=len(iterations))
     pool.starmap(experiment_time_taken, iterations)

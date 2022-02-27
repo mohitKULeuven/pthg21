@@ -19,7 +19,7 @@ def nurse_rostering_instance(nurses=7, days=7, minNurses=5, maxNurses=7):
     # print(schedule_instance.var_lbs, schedule_instance.var_ubs, schedule_instance.tensors_dim)
     m = nurse_rostering_model(schedule_instance)
     schedule_instance.pos_data = []
-    for solution in solutions(m, schedule_instance, 10):
+    for solution in solutions(m, schedule_instance, 100):
         solution = np.reshape(solution, (nurses, days))
         schedule_instance.pos_data.append({'array': solution})
     if not schedule_instance.pos_data:
