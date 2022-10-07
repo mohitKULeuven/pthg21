@@ -19,6 +19,9 @@ I hope everything continues to work with the latest CPMpy version, if not let us
 
 We also use the SymPy library for symbolic expressions.
 
+So, requirements: Python3, CPMpy, SymPy
+With those, you should be able to run e.g. `python3 cp2022_experiments.py -exp queens`
+
 ## Repo structure
 
 * `instances/`  contains the 17 original instances from the PTHG21 challenge including our post-hoc interpretation of the ground truth model expressed in CPMpy (based on the names of the problems shown in the PTHG21 slides, copied into instances/problems.txt. We do not know the real ground-truth models), plus our own simple nurse rostering instance generator that outputs PTHG21 formatted data.
